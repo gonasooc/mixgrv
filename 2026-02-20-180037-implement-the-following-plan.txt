@@ -1,0 +1,2023 @@
+
+╭─── Claude Code v2.1.49 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                 Welcome back HELLO!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                                                    │ ─────────────────────── │
+│                          ✻                         │ Recent activity         │
+│                          |                         │ No recent activity      │
+│                         ▟█▙                        │                         │
+│                       ▐▛███▜▌                      │                         │
+│                      ▝▜█████▛▘                     │                         │
+│                        ▘▘ ▝▝                       │                         │
+│                                                    │                         │
+│   Opus 4.6 · Claude Max · hello@vlending.co.kr's   │                         │
+│   Organization                                     │                         │
+│      ~/Desktop/gonasoo.dev/repositories/mixgrv     │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ index.html 한국어화 + 파일 업로드 UI 적용                                    │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ 현재 index.html이 영문 라벨 위주이고, 트레이닝 데이터셋 경로를 텍스트로 직접 │
+│  입력해야 함.                                                                │
+│ 사용자 요청: (1) 타이틀/설명을 한국어로 자세하게 기재, (2) 트레이닝 시       │
+│ 파일을 로컬에서 직접 첨부(업로드)하는 방식으로 변경.                         │
+│                                                                              │
+│ 수정 대상 파일                                                               │
+│                                                                              │
+│ 1. ACE-Step-1.5/acestep/ui/gradio/api/api_routes.py — 파일 업로드 엔드포인트 │
+│  추가                                                                        │
+│                                                                              │
+│ _register_extended_endpoints 함수 내에 POST /v1/dataset/upload 엔드포인트    │
+│ 추가:                                                                        │
+│ - UploadFile, File, Form을 FastAPI import에 추가                             │
+│ - multipart/form-data로 오디오 파일 다중 수신                                │
+│ - datasets/uploads/{dataset_name}/ 디렉토리에 저장                           │
+│ - 허용 확장자: .mp3, .wav, .flac, .ogg, .aac, .m4a, .wma, .opus              │
+│ - 응답: { upload_dir, saved_files, skipped_files, count }                    │
+│                                                                              │
+│ # import 추가                                                                │
+│ from fastapi import ..., UploadFile, File, Form                              │
+│                                                                              │
+│ # _register_extended_endpoints 내에 추가                                     │
+│ @app.post("/v1/dataset/upload")                                              │
+│ async def upload_dataset_files(                                              │
+│     files: List[UploadFile] = File(...),                                     │
+│     dataset_name: str = Form(default="uploaded_dataset"),                    │
+│     _: None = Depends(verify_api_key),                                       │
+│ ):                                                                           │
+│     AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a',     │
+│ '.wma', '.opus'}                                                             │
+│     # ACE-Step-1.5 project root (4 levels up from api_routes.py directory)   │
+│     _root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',    │
+│ '..', '..', '..'))                                                           │
+│     upload_dir = os.path.join(_root, "datasets", "uploads", dataset_name)    │
+│     os.makedirs(upload_dir, exist_ok=True)                                   │
+│     saved, skipped = [], []                                                  │
+│     for f in files:                                                          │
+│         ext = os.path.splitext(f.filename)[1].lower()                        │
+│         if ext not in AUDIO_EXTENSIONS:                                      │
+│             skipped.append(f.filename); continue                             │
+│         content = await f.read()                                             │
+│         with open(os.path.join(upload_dir, f.filename), "wb") as out:        │
+│             out.write(content)                                               │
+│         saved.append(f.filename)                                             │
+│     return _wrap_response({"upload_dir": upload_dir, "saved_files": saved,   │
+│ "skipped_files": skipped, "count": len(saved)})                              │
+│                                                                              │
+│ 2. index.html — 전면 한국어화 + 파일 업로드 UI                               │
+│                                                                              │
+│ 한국어화 범위                                                                │
+│                                                                              │
+│ - 페이지 타이틀: mixgrv - LoRA 트레이닝 & AI 음악 생성                       │
+│ - 서브타이틀: ACE-Step 1.5 기반의 LoRA 학습과 AI 음악 생성을 위한 웹         │
+│ 인터페이스입니다.                                                            │
+│ - 탭 이름: 트레이닝 / 음악 생성                                              │
+│ - 모든 카드 제목에 한국어 설명 추가:                                         │
+│   - Step 1: 데이터셋 준비 — "학습에 사용할 오디오 파일을 업로드하고          │
+│ 데이터셋을 구성합니다."                                                      │
+│   - Step 2: 전처리 — "오디오 파일을 모델 학습에 적합한 텐서 형태로           │
+│ 변환합니다."                                                                 │
+│   - Step 3: 트레이닝 — "전처리된 데이터로 LoRA 모델을 학습합니다."           │
+│   - LoRA 설정: "학습된 LoRA 어댑터를 로드하여 음악 생성 스타일을             │
+│ 변경합니다."                                                                 │
+│   - 생성 설정: "생성할 음악의 장르, 분위기, 가사, BPM 등을 설정합니다."      │
+│ - 모든 라벨, 버튼 텍스트, placeholder, 토스트 메시지를 한국어로              │
+│ - 가사 힌트: [verse], [chorus], [bridge], [outro] 태그로 곡의 구조를 지정할  │
+│ 수 있습니다. 비워두면 인스트루멘탈로 생성됩니다.                             │
+│                                                                              │
+│ 파일 업로드 UI (Step 1 변경)                                                 │
+│                                                                              │
+│ 기존: 디렉토리 경로 텍스트 입력 + 스캔 버튼                                  │
+│                                                                              │
+│ 변경: 드래그 앤 드롭 + 파일 선택 영역 + 업로드 버튼                          │
+│                                                                              │
+│ ┌──────────────────────────────────────────────┐                             │
+│ │  데이터셋 이름: [my_dataset]                    │                          │
+│ │  커스텀 태그:   [lo-fi, ambient]               │                           │
+│ │  ☐ 인스트루멘탈 전용                             │                         │
+│ │                                              │                             │
+│ │  ┌─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐  │                                  │
+│ │  │   오디오 파일을 여기에 드래그하거나       │  │                          │
+│ │  │         [파일 선택] 을 클릭하세요        │  │                           │
+│ │  │   (mp3, wav, flac, ogg, aac, m4a)    │  │                               │
+│ │  └─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘  │                                  │
+│ │  선택된 파일: 8개 (총 45.2 MB)                  │                          │
+│ │  ├ track01.mp3 (5.6 MB)                      │                             │
+│ │  ├ track02.wav (12.1 MB)                     │                             │
+│ │  └ ...                                       │                             │
+│ │                                              │                             │
+│ │  [업로드 & 스캔]  [데이터셋 저장]                │                         │
+│ └──────────────────────────────────────────────┘                             │
+│                                                                              │
+│ - <input type="file" multiple                                                │
+│ accept=".mp3,.wav,.flac,.ogg,.aac,.m4a,.wma,.opus">                          │
+│ - 드래그 앤 드롭 영역 (dashed border, hover 효과)                            │
+│ - 선택된 파일 목록 실시간 표시 (파일명 + 크기)                               │
+│ - [업로드 & 스캔] 버튼 클릭 시:                                              │
+│   a. FormData로 파일들 + dataset_name을 POST /v1/dataset/upload에 전송       │
+│   b. 업로드 완료 후 반환된 upload_dir로 자동으로 POST /v1/dataset/scan 호출  │
+│   c. 스캔 결과 표시                                                          │
+│ - 업로드 중 프로그레스 표시 (XHR로 progress 이벤트 활용)                     │
+│                                                                              │
+│ JavaScript 변경                                                              │
+│                                                                              │
+│ - API.uploadDataset 추가: FormData + fetch (Content-Type 미설정, 브라우저    │
+│ 자동)                                                                        │
+│ - uploadAndScan() 함수: 업로드 → 스캔 자동 체인                              │
+│ - 드래그 앤 드롭 이벤트 핸들러 (dragover, dragleave, drop)                   │
+│ - 파일 목록 렌더링 함수                                                      │
+│                                                                              │
+│ 구현 순서                                                                    │
+│                                                                              │
+│ 1. api_routes.py — import 추가 + upload 엔드포인트 추가                      │
+│ 2. index.html — 전체 한국어화 + Step 1 파일 업로드 UI 교체                   │
+│                                                                              │
+│ 검증                                                                         │
+│                                                                              │
+│ 1. 서버 재시작 후 POST /v1/dataset/upload 엔드포인트 동작 확인               │
+│ 2. index.html에서 오디오 파일 드래그 앤 드롭 → 업로드 → 스캔 동작 확인       │
+│ 3. 모든 UI 텍스트가 한국어로 표시되는지 확인                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+⏺ I'll start by reading both files that need to be modified.
+
+⏺ Read 2 files (ctrl+o to expand)
+
+⏺ Now I have a clear picture of both files. Let me implement the changes.
+
+⏺ First, let me update api_routes.py — add the imports and the upload endpoint.
+
+⏺ Update(ACE-Step-1.5/acestep/ui/gradio/api/api_routes.py)
+  ⎿  Added 1 line, removed 1 line
+      10  from typing import Any, Dict, List, Optional
+      11  from uuid import uuid4
+      12  
+      13 -from fastapi import APIRouter, HTTPException, Request, Depends,
+         - Header                                                        
+      13 +from fastapi import APIRouter, HTTPException, Request, Depends,
+         + Header, UploadFile, File, Form                                
+      14  from fastapi.middleware.cors import CORSMiddleware
+      15  from fastapi.responses import FileResponse
+      16  from pydantic import BaseModel, Field
+
+⏺ Now add the upload endpoint inside _register_extended_endpoints, right before
+  the LoRA endpoints.
+
+⏺ Update(ACE-Step-1.5/acestep/ui/gradio/api/api_routes.py)
+  ⎿  Added 23 lines
+      684          append_jsonl=_append_jsonl,
+      685      )
+      686  
+      687 +    # Dataset file upload endpoint                            
+      688 +    @app.post("/v1/dataset/upload")                           
+      689 +    async def upload_dataset_files(                           
+      690 +        files: List[UploadFile] = File(...),                  
+      691 +        dataset_name: str = Form(default="uploaded_dataset"), 
+      692 +        _: None = Depends(verify_api_key),                    
+      693 +    ):                                                        
+      694 +        AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.ogg', '
+          +.aac', '.m4a', '.wma', '.opus'}                               
+      695 +        _root = os.path.abspath(os.path.join(os.path.dirname(_
+          +_file__), '..', '..', '..', '..'))                            
+      696 +        upload_dir = os.path.join(_root, "datasets", "uploads"
+          +, dataset_name)                                               
+      697 +        os.makedirs(upload_dir, exist_ok=True)                
+      698 +        saved, skipped = [], []                               
+      699 +        for f in files:                                       
+      700 +            ext = os.path.splitext(f.filename)[1].lower()     
+      701 +            if ext not in AUDIO_EXTENSIONS:                   
+      702 +                skipped.append(f.filename)                    
+      703 +                continue                                      
+      704 +            content = await f.read()                          
+      705 +            with open(os.path.join(upload_dir, f.filename), "w
+          +b") as out:                                                   
+      706 +                out.write(content)                            
+      707 +            saved.append(f.filename)                          
+      708 +        return _wrap_response({"upload_dir": upload_dir, "save
+          +d_files": saved, "skipped_files": skipped, "count": len(saved)
+          +})                                                            
+      709 +                                                              
+      710      # LoRA management endpoints (inline, matching api_server.p
+           y behaviour)
+      711  
+      712      @app.post("/v1/lora/load")
+
+⏺ Now the big change — rewrite index.html with full Korean localization and the
+  file upload UI.
+
+⏺ Write(index.html)
+  ⎿  Added 362 lines, removed 148 lines
+      3  <head>
+      4  <meta charset="UTF-8">
+      5  <meta name="viewport" content="width=device-width, initial-scale
+         =1.0">
+      6 -<title>mixgrv - LoRA Training & Music Generation</title>        
+      6 +<title>mixgrv - LoRA 트레이닝 & AI 음악 생성</title>            
+      7  <style>
+      8  :root {
+      9    --bg: #1a1a2e;
+     ...
+      45  .header h1 {
+      46    font-size: 1.3em;
+      47    color: var(--text-bright);
+      48 +  margin-bottom: 4px;                                          
+      49 +}                                                              
+      50 +.header .subtitle {                                            
+      51 +  font-size: 0.85em;                                           
+      52 +  color: var(--text-dim);                                      
+      53    margin-bottom: 10px;
+      54  }
+      55  .server-row {
+     ...
+      108  .card h3 {
+      109    font-size: 1em;
+      110    color: var(--text-bright);
+      106 -  margin-bottom: 12px;                                        
+      111 +  margin-bottom: 4px;                                         
+      112    padding-bottom: 8px;
+      113    border-bottom: 1px solid var(--border);
+      114  }
+      115 +.card-desc {                                                  
+      116 +  font-size: 0.8em;                                           
+      117 +  color: var(--text-dim);                                     
+      118 +  margin-bottom: 12px;                                        
+      119 +}                                                             
+      120  .step-badge {
+      121    display: inline-block;
+      122    background: var(--primary);
+     ...
+      379  @keyframes spin { to { transform: rotate(360deg); } }
+      380  
+      381  .hidden { display: none !important; }
+      382 +                                                              
+      383 +/* Drop zone */                                               
+      384 +.drop-zone {                                                  
+      385 +  border: 2px dashed var(--border);                           
+      386 +  border-radius: 8px;                                         
+      387 +  padding: 28px 16px;                                         
+      388 +  text-align: center;                                         
+      389 +  cursor: pointer;                                            
+      390 +  transition: all 0.2s;                                       
+      391 +  margin-top: 10px;                                           
+      392 +  background: var(--input-bg);                                
+      393 +}                                                             
+      394 +.drop-zone:hover, .drop-zone.drag-over {                      
+      395 +  border-color: var(--primary);                               
+      396 +  background: rgba(233, 69, 96, 0.06);                        
+      397 +}                                                             
+      398 +.drop-zone-text {                                             
+      399 +  font-size: 0.9em;                                           
+      400 +  color: var(--text-dim);                                     
+      401 +  line-height: 1.6;                                           
+      402 +}                                                             
+      403 +.drop-zone-text .browse-link {                                
+      404 +  color: var(--primary);                                      
+      405 +  text-decoration: underline;                                 
+      406 +  cursor: pointer;                                            
+      407 +  font-weight: 600;                                           
+      408 +}                                                             
+      409 +.drop-zone-ext {                                              
+      410 +  font-size: 0.75em;                                          
+      411 +  color: var(--text-dim);                                     
+      412 +  margin-top: 4px;                                            
+      413 +  opacity: 0.7;                                               
+      414 +}                                                             
+      415 +.selected-files-summary {                                     
+      416 +  font-size: 0.85em;                                          
+      417 +  color: var(--text-bright);                                  
+      418 +  margin-top: 10px;                                           
+      419 +  font-weight: 600;                                           
+      420 +}                                                             
+      421 +.selected-files-list {                                        
+      422 +  background: var(--input-bg);                                
+      423 +  border: 1px solid var(--border);                            
+      424 +  border-radius: 6px;                                         
+      425 +  padding: 8px 10px;                                          
+      426 +  max-height: 160px;                                          
+      427 +  overflow-y: auto;                                           
+      428 +  font-size: 0.78em;                                          
+      429 +  color: var(--text-dim);                                     
+      430 +  margin-top: 6px;                                            
+      431 +  line-height: 1.7;                                           
+      432 +}                                                             
+      433 +.upload-progress-wrap {                                       
+      434 +  margin-top: 8px;                                            
+      435 +}                                                             
+      436  </style>
+      437  </head>
+      438  <body>
+     ...
+      440  
+      441    <!-- Header -->
+      442    <div class="header">
+      379 -    <h1>mixgrv - LoRA Training & Music Generation</h1>        
+      443 +    <h1>mixgrv - LoRA 트레이닝 & AI 음악 생성</h1>            
+      444 +    <div class="subtitle">ACE-Step 1.5 기반의 LoRA 학습과 AI  
+          +음악 생성을 위한 웹 인터페이스입니다.</div>                   
+      445      <div class="server-row">
+      381 -      <label style="margin:0; white-space:nowrap;">Server:</la
+          -bel>                                                          
+      446 +      <label style="margin:0; white-space:nowrap;">서버:</labe
+          +l>                                                            
+      447        <input type="text" id="serverUrl" value="http://127.0.0.
+           1:7860" style="flex:1">
+      383 -      <button class="btn btn-secondary btn-small" onclick="che
+          -ckConnection()">Connect</button>                              
+      448 +      <button class="btn btn-secondary btn-small" onclick="che
+          +ckConnection()">연결</button>                                 
+      449        <span class="status-dot" id="statusDot"></span>
+      450      </div>
+      451    </div>
+      452  
+      453    <!-- Tabs -->
+      454    <div class="tabs">
+      390 -    <button class="tab-btn active" onclick="switchTab('trainin
+          -g')">Training</button>                                        
+      391 -    <button class="tab-btn" onclick="switchTab('generate')">Mu
+          -sic Generation</button>                                       
+      455 +    <button class="tab-btn active" onclick="switchTab('trainin
+          +g')">트레이닝</button>                                        
+      456 +    <button class="tab-btn" onclick="switchTab('generate')">음
+          +악 생성</button>                                              
+      457    </div>
+      458  
+      459    <!-- ==================== TRAINING TAB ==================== 
+           -->
+      460    <div class="tab-content active" id="tab-training">
+      461  
+      397 -    <!-- Step 1: Dataset Scan -->                             
+      462 +    <!-- Step 1: Dataset Preparation -->                      
+      463      <div class="card">
+      399 -      <h3><span class="step-badge">Step 1</span> Dataset Scan<
+          -/h3>                                                          
+      400 -      <label>Dataset directory path</label>                   
+      401 -      <input type="text" id="datasetDir" placeholder="/path/to
+          -/audio/files">                                                
+      464 +      <h3><span class="step-badge">Step 1</span> 데이터셋 준비
+          +</h3>                                                         
+      465 +      <div class="card-desc">학습에 사용할 오디오 파일을 업로 
+          +드하고 데이터셋을 구성합니다.</div>                           
+      466        <div class="form-grid">
+      467          <div>
+      404 -          <label>Dataset name</label>                         
+      468 +          <label>데이터셋 이름</label>                        
+      469            <input type="text" id="datasetName" placeholder="my_
+           dataset">
+      470          </div>
+      471          <div>
+      408 -          <label>Custom tag</label>                           
+      409 -          <input type="text" id="customTag" placeholder="e.g. 
+          -lo-fi, ambient">                                              
+      472 +          <label>커스텀 태그</label>                          
+      473 +          <input type="text" id="customTag" placeholder="예: l
+          +o-fi, ambient">                                               
+      474          </div>
+      475        </div>
+      476        <label style="margin-top:10px">
+      413 -        <input type="checkbox" id="isInstrumental"> Instrument
+          -al only (no vocals)                                           
+      477 +        <input type="checkbox" id="isInstrumental"> 인스트루멘
+          +탈 전용 (보컬 없음)                                           
+      478        </label>
+      479 +                                                              
+      480 +      <!-- Drop zone -->                                      
+      481 +      <div class="drop-zone" id="dropZone">                   
+      482 +        <input type="file" id="fileInput" multiple accept=".mp
+          +3,.wav,.flac,.ogg,.aac,.m4a,.wma,.opus" style="display:none"> 
+      483 +        <div class="drop-zone-text">                          
+      484 +          오디오 파일을 여기에 드래그하거나<br>               
+      485 +          <span class="browse-link" id="browseLink">파일 선택<
+          +/span>을 클릭하세요                                           
+      486 +        </div>                                                
+      487 +        <div class="drop-zone-ext">mp3, wav, flac, ogg, aac, m
+          +4a, wma, opus</div>                                           
+      488 +      </div>                                                  
+      489 +      <div id="selectedFilesSummary" class="selected-files-sum
+          +mary hidden"></div>                                           
+      490 +      <div id="selectedFilesList" class="selected-files-list h
+          +idden"></div>                                                 
+      491 +                                                              
+      492 +      <!-- Upload progress -->                                
+      493 +      <div id="uploadProgress" class="upload-progress-wrap hid
+          +den">                                                         
+      494 +        <div class="progress-wrap">                           
+      495 +          <div class="progress-bar" id="uploadBar" style="widt
+          +h:0%"></div>                                                  
+      496 +          <div class="progress-text" id="uploadPercent">업로드
+          + 중...</div>                                                  
+      497 +        </div>                                                
+      498 +      </div>                                                  
+      499 +                                                              
+      500        <div class="btn-row">
+      416 -        <button class="btn btn-primary" onclick="scanDataset()
+          -">Scan</button>                                               
+      417 -        <button class="btn btn-secondary" id="btnSaveDataset" 
+          -onclick="saveDataset()" disabled>Save Dataset</button>        
+      501 +        <button class="btn btn-primary" id="btnUploadScan" onc
+          +lick="uploadAndScan()" disabled>업로드 & 스캔</button>        
+      502 +        <button class="btn btn-secondary" id="btnSaveDataset" 
+          +onclick="saveDataset()" disabled>데이터셋 저장</button>       
+      503        </div>
+      504        <div class="file-list hidden" id="scanResult"></div>
+      505      </div>
+      506  
+      507      <!-- Step 2: Preprocess -->
+      508      <div class="card">
+      424 -      <h3><span class="step-badge">Step 2</span> Preprocessing
+          -</h3>                                                         
+      425 -      <label>Output directory</label>                         
+      509 +      <h3><span class="step-badge">Step 2</span> 전처리</h3>  
+      510 +      <div class="card-desc">오디오 파일을 모델 학습에 적합한 
+          +텐서 형태로 변환합니다.</div>                                 
+      511 +      <label>출력 디렉토리</label>                            
+      512        <input type="text" id="preprocessOutDir" value="./datase
+           ts/preprocessed_tensors">
+      513        <div class="btn-row">
+      428 -        <button class="btn btn-primary" id="btnPreprocess" onc
+          -lick="startPreprocess()">Start Preprocessing</button>         
+      514 +        <button class="btn btn-primary" id="btnPreprocess" onc
+          +lick="startPreprocess()">전처리 시작</button>                 
+      515        </div>
+      516        <div id="preprocessProgress" class="hidden">
+      517          <div class="progress-wrap">
+     ...
+      519            <div class="progress-text" id="preprocessPercent">0%
+           </div>
+      520          </div>
+      521          <div class="stats-row">
+      436 -          <div class="stat" id="preprocessFile">File: -</div> 
+      437 -          <div class="stat" id="preprocessElapsed">Elapsed: 0s
+          -</div>                                                        
+      522 +          <div class="stat" id="preprocessFile">상태: -</div> 
+      523 +          <div class="stat" id="preprocessElapsed">경과: 0초</
+          +div>                                                          
+      524          </div>
+      525        </div>
+      526      </div>
+      527  
+      528      <!-- Step 3: Training -->
+      529      <div class="card">
+      444 -      <h3><span class="step-badge">Step 3</span> Training</h3>
+      530 +      <h3><span class="step-badge">Step 3</span> 트레이닝</h3>
+      531 +      <div class="card-desc">전처리된 데이터로 LoRA 모델을 학 
+          +습합니다.</div>                                               
+      532        <div class="inline-row">
+      533          <div>
+      447 -          <label>Tensor directory</label>                     
+      534 +          <label>텐서 디렉토리</label>                        
+      535            <input type="text" id="tensorDir" placeholder="./dat
+           asets/preprocessed_tensors">
+      536          </div>
+      450 -        <button class="btn btn-secondary btn-small" onclick="l
+          -oadTensorInfo()" style="margin-bottom:1px">Load</button>      
+      537 +        <button class="btn btn-secondary btn-small" onclick="l
+          +oadTensorInfo()" style="margin-bottom:1px">불러오기</button>  
+      538        </div>
+      539        <div id="tensorInfo" class="hidden" style="margin-top:6p
+           x">
+      540          <div class="stat" id="tensorInfoText">-</div>
+     ...
+      542  
+      543        <div class="form-grid" style="margin-top:10px">
+      544          <div>
+      458 -          <label>Epochs</label>                               
+      545 +          <label>에포크 수</label>                            
+      546            <select id="trainEpochs">
+      547              <option value="50">50</option>
+      548              <option value="100" selected>100</option>
+     ...
+      552            </select>
+      553          </div>
+      554          <div>
+      468 -          <label>LoRA Rank</label>                            
+      555 +          <label>LoRA 랭크</label>                            
+      556            <select id="trainRank">
+      557              <option value="16">16</option>
+      558              <option value="32">32</option>
+     ...
+      561            </select>
+      562          </div>
+      563          <div>
+      477 -          <label>LoRA Alpha</label>                           
+      564 +          <label>LoRA 알파</label>                            
+      565            <select id="trainAlpha">
+      479 -            <option value="auto">rank x 2 (auto)</option>     
+      566 +            <option value="auto">rank x 2 (자동)</option>     
+      567              <option value="64">64</option>
+      568              <option value="128" selected>128</option>
+      569              <option value="256">256</option>
+      570            </select>
+      571          </div>
+      572          <div>
+      486 -          <label>Learning Rate</label>                        
+      573 +          <label>학습률</label>                               
+      574            <select id="trainLR">
+      575              <option value="0.0001">1e-4</option>
+      576              <option value="0.0003" selected>3e-4</option>
+     ...
+      579            </select>
+      580          </div>
+      581          <div>
+      495 -          <label>Batch Size</label>                           
+      582 +          <label>배치 크기</label>                            
+      583            <select id="trainBatch">
+      584              <option value="1" selected>1</option>
+      585              <option value="2">2</option>
+     ...
+      587            </select>
+      588          </div>
+      589          <div>
+      503 -          <label>Dropout</label>                              
+      590 +          <label>드롭아웃</label>                             
+      591            <select id="trainDropout">
+      592              <option value="0">0.0</option>
+      593              <option value="0.05">0.05</option>
+     ...
+      596            </select>
+      597          </div>
+      598          <div>
+      512 -          <label>Checkpoint interval (epochs)</label>         
+      599 +          <label>체크포인트 간격 (에포크)</label>             
+      600            <select id="trainCheckpoint">
+      601              <option value="10">10</option>
+      602              <option value="25">25</option>
+     ...
+      605            </select>
+      606          </div>
+      607          <div>
+      521 -          <label>Output directory</label>                     
+      608 +          <label>출력 디렉토리</label>                        
+      609            <input type="text" id="trainOutputDir" value="./lora
+           _output">
+      610          </div>
+      611        </div>
+      612  
+      613        <div class="btn-row">
+      527 -        <button class="btn btn-primary" id="btnStartTrain" onc
+          -lick="startTraining()">Start Training</button>                
+      528 -        <button class="btn btn-danger" id="btnStopTrain" oncli
+          -ck="stopTraining()" disabled>Stop Training</button>           
+      614 +        <button class="btn btn-primary" id="btnStartTrain" onc
+          +lick="startTraining()">트레이닝 시작</button>                 
+      615 +        <button class="btn btn-danger" id="btnStopTrain" oncli
+          +ck="stopTraining()" disabled>트레이닝 중지</button>           
+      616        </div>
+      617  
+      618        <!-- Training progress -->
+     ...
+      622            <div class="progress-text" id="trainPercent">0%</div
+           >
+      623          </div>
+      624          <div class="stats-row">
+      538 -          <div class="stat">Epoch: <b id="trainEpochCur">0</b>
+          - / <b id="trainEpochTotal">0</b></div>                        
+      539 -          <div class="stat">Loss: <b id="trainLossCur">-</b></
+          -div>                                                          
+      540 -          <div class="stat">Elapsed: <b id="trainElapsed">-</b
+          -></div>                                                       
+      541 -          <div class="stat">Remaining: <b id="trainRemaining">
+          --</b></div>                                                   
+      542 -          <div class="stat">Status: <b id="trainStatus">Idle</
+          -b></div>                                                      
+      625 +          <div class="stat">에포크: <b id="trainEpochCur">0</b
+          +> / <b id="trainEpochTotal">0</b></div>                       
+      626 +          <div class="stat">손실: <b id="trainLossCur">-</b></
+          +div>                                                          
+      627 +          <div class="stat">경과: <b id="trainElapsed">-</b></
+          +div>                                                          
+      628 +          <div class="stat">남은 시간: <b id="trainRemaining">
+          +-</b></div>                                                   
+      629 +          <div class="stat">상태: <b id="trainStatus">대기</b>
+          +</div>                                                        
+      630          </div>
+      631  
+      632          <div class="chart-wrap">
+      633            <canvas id="lossChart" height="200"></canvas>
+      634          </div>
+      635  
+      549 -        <label>Training Log</label>                           
+      550 -        <div class="log-area" id="trainLog">Waiting for traini
+          -ng to start...</div>                                          
+      636 +        <label>트레이닝 로그</label>                          
+      637 +        <div class="log-area" id="trainLog">트레이닝 시작 대기
+          + 중...</div>                                                  
+      638        </div>
+      639      </div>
+      640    </div>
+     ...
+      644  
+      645      <!-- LoRA Settings -->
+      646      <div class="card">
+      560 -      <h3>LoRA Settings</h3>                                  
+      647 +      <h3>LoRA 설정</h3>                                      
+      648 +      <div class="card-desc">학습된 LoRA 어댑터를 로드하여 음 
+          +악 생성 스타일을 변경합니다.</div>                            
+      649        <div class="lora-section">
+      650          <div class="inline-row">
+      651            <div>
+      564 -            <label>LoRA path</label>                          
+      652 +            <label>LoRA 경로</label>                          
+      653              <input type="text" id="loraPath" placeholder="/pat
+           h/to/lora/adapter">
+      654            </div>
+      567 -          <button class="btn btn-primary btn-small" onclick="l
+          -oadLora()">Load</button>                                      
+      568 -          <button class="btn btn-danger btn-small" onclick="un
+          -loadLora()">Unload</button>                                   
+      655 +          <button class="btn btn-primary btn-small" onclick="l
+          +oadLora()">로드</button>                                      
+      656 +          <button class="btn btn-danger btn-small" onclick="un
+          +loadLora()">해제</button>                                     
+      657          </div>
+      658          <label style="margin-top:10px">
+      571 -          <input type="checkbox" id="loraEnabled" onchange="to
+          -ggleLora()"> Enable LoRA                                      
+      659 +          <input type="checkbox" id="loraEnabled" onchange="to
+          +ggleLora()"> LoRA 활성화                                      
+      660          </label>
+      573 -        <label>Strength</label>                               
+      661 +        <label>강도</label>                                   
+      662          <div class="range-row">
+      663            <input type="range" id="loraScale" min="0" max="1" s
+           tep="0.05" value="1.0" oninput="updateLoraScaleLabel()" onchan
+           ge="setLoraScale()">
+      664            <span class="range-val" id="loraScaleVal">1.00</span
+           >
+      665          </div>
+      578 -        <div class="lora-status" id="loraStatusText">LoRA: Not
+          - loaded</div>                                                 
+      666 +        <div class="lora-status" id="loraStatusText">LoRA: 로 
+          +드되지 않음</div>                                             
+      667        </div>
+      668      </div>
+      669  
+      670      <!-- Generation Settings -->
+      671      <div class="card">
+      584 -      <h3>Generation Settings</h3>                            
+      585 -      <label>Caption / Description</label>                    
+      586 -      <textarea id="genCaption" placeholder="A dreamy lo-fi be
+          -at with soft piano and ambient textures" rows="2"></textarea> 
+      587 -      <label>Lyrics</label>                                   
+      588 -      <textarea id="genLyrics" placeholder="[verse]&#10;Your l
+          -yrics here...&#10;&#10;[chorus]&#10;Your chorus here..." rows=
+          -"4"></textarea>                                               
+      589 -      <div class="lyrics-hint">Use [verse], [chorus], [bridge]
+          -, [outro] tags to structure lyrics. Leave empty for instrument
+          -al.</div>                                                     
+      672 +      <h3>생성 설정</h3>                                      
+      673 +      <div class="card-desc">생성할 음악의 장르, 분위기, 가사,
+          + BPM 등을 설정합니다.</div>                                   
+      674 +      <label>캡션 / 설명</label>                              
+      675 +      <textarea id="genCaption" placeholder="예: 부드러운 피아
+          +노와 앰비언트 텍스처의 몽환적인 로파이 비트" rows="2"></textar
+          +ea>                                                           
+      676 +      <label>가사</label>                                     
+      677 +      <textarea id="genLyrics" placeholder="[verse]&#10;가사를
+          + 입력하세요...&#10;&#10;[chorus]&#10;후렴구를 입력하세요..." r
+          +ows="4"></textarea>                                           
+      678 +      <div class="lyrics-hint">[verse], [chorus], [bridge], [o
+          +utro] 태그로 곡의 구조를 지정할 수 있습니다. 비워두면 인스트루
+          +멘탈로 생성됩니다.</div>                                      
+      679  
+      680        <div class="form-grid">
+      681          <div>
+      682            <label>BPM</label>
+      683            <select id="genBPM">
+      595 -            <option value="">Auto</option>                    
+      684 +            <option value="">자동</option>                    
+      685              <option value="60">60</option>
+      686              <option value="80">80</option>
+      687              <option value="100">100</option>
+     ...
+      691            </select>
+      692          </div>
+      693          <div>
+      605 -          <label>Key</label>                                  
+      694 +          <label>키</label>                                   
+      695            <select id="genKey">
+      607 -            <option value="">Auto</option>                    
+      696 +            <option value="">자동</option>                    
+      697              <option value="C major">C major</option><option va
+           lue="C minor">C minor</option>
+      698              <option value="D major">D major</option><option va
+           lue="D minor">D minor</option>
+      699              <option value="E major">E major</option><option va
+           lue="E minor">E minor</option>
+     ...
+      704            </select>
+      705          </div>
+      706          <div>
+      618 -          <label>Time Signature</label>                       
+      707 +          <label>박자</label>                                 
+      708            <select id="genTimeSig">
+      620 -            <option value="">Auto</option>                    
+      709 +            <option value="">자동</option>                    
+      710              <option value="3/4">3/4</option>
+      711              <option value="4/4" selected>4/4</option>
+      712              <option value="6/8">6/8</option>
+      713            </select>
+      714          </div>
+      715          <div>
+      627 -          <label>Duration (seconds)</label>                   
+      716 +          <label>재생 시간 (초)</label>                       
+      717            <select id="genDuration">
+      629 -            <option value="15">15s</option>                   
+      630 -            <option value="30" selected>30s</option>          
+      631 -            <option value="60">60s</option>                   
+      632 -            <option value="120">120s</option>                 
+      633 -            <option value="240">240s</option>                 
+      718 +            <option value="15">15초</option>                  
+      719 +            <option value="30" selected>30초</option>         
+      720 +            <option value="60">60초</option>                  
+      721 +            <option value="120">120초</option>                
+      722 +            <option value="240">240초</option>                
+      723            </select>
+      724          </div>
+      725          <div>
+      637 -          <label>Language</label>                             
+      726 +          <label>언어</label>                                 
+      727            <select id="genLanguage">
+      639 -            <option value="ko">Korean</option>                
+      640 -            <option value="en" selected>English</option>      
+      641 -            <option value="ja">Japanese</option>              
+      642 -            <option value="zh">Chinese</option>               
+      643 -            <option value="instrumental">Instrumental</option>
+      728 +            <option value="ko">한국어</option>                
+      729 +            <option value="en" selected>영어</option>         
+      730 +            <option value="ja">일본어</option>                
+      731 +            <option value="zh">중국어</option>                
+      732 +            <option value="instrumental">인스트루멘탈</option>
+      733            </select>
+      734          </div>
+      735        </div>
+      736  
+      737        <div class="btn-row">
+      649 -        <button class="btn btn-primary" id="btnGenerate" oncli
+          -ck="generateMusic()">Generate Music</button>                  
+      738 +        <button class="btn btn-primary" id="btnGenerate" oncli
+          +ck="generateMusic()">음악 생성</button>                       
+      739        </div>
+      740  
+      741        <!-- Generation progress -->
+      742        <div id="genProgress" class="hidden">
+      743          <div class="progress-wrap" style="margin-top:12px">
+      744            <div class="progress-bar" id="genBar" style="width:0
+           %"></div>
+      656 -          <div class="progress-text" id="genPercent">Generatin
+          -g...</div>                                                    
+      745 +          <div class="progress-text" id="genPercent">생성 중..
+          +.</div>                                                       
+      746          </div>
+      747        </div>
+      748  
+     ...
+      768    baseUrl: localStorage.getItem('mixgrv_serverUrl') || 'http:/
+           /127.0.0.1:7860',
+      769    connected: false,
+      770    scanData: null,
+      771 +  uploadedDir: null,                                          
+      772 +  selectedFiles: [],                                          
+      773    preprocessTaskId: null,
+      774    preprocessPollTimer: null,
+      775    trainingPollTimer: null,
+     ...
+      782  window.addEventListener('DOMContentLoaded', () => {
+      783    $('#serverUrl').value = State.baseUrl;
+      784    _restoreInputs();
+      785 +  _initDropZone();                                            
+      786    checkConnection();
+      787  });
+      788  
+     ...
+      833    // Music generation
+      834    releaseTask:       (p) => POST('/release_task', p),
+      835    queryResult:       (p) => POST('/query_result', p),
+      836 +  // Upload (uses FormData, no Content-Type header)           
+      837 +  uploadDataset: (formData) => {                              
+      838 +    return new Promise((resolve, reject) => {                 
+      839 +      const xhr = new XMLHttpRequest();                       
+      840 +      xhr.open('POST', State.baseUrl + '/v1/dataset/upload'); 
+      841 +      xhr.onload = () => {                                    
+      842 +        if (xhr.status >= 200 && xhr.status < 300) {          
+      843 +          resolve(JSON.parse(xhr.responseText));              
+      844 +        } else {                                              
+      845 +          try {                                               
+      846 +            const err = JSON.parse(xhr.responseText);         
+      847 +            reject(new Error(err.detail || xhr.statusText));  
+      848 +          } catch {                                           
+      849 +            reject(new Error(xhr.statusText));                
+      850 +          }                                                   
+      851 +        }                                                     
+      852 +      };                                                      
+      853 +      xhr.onerror = () => reject(new Error('네트워크 오류')); 
+      854 +      xhr.upload.onprogress = (e) => {                        
+      855 +        if (e.lengthComputable) {                             
+      856 +          const pct = Math.round((e.loaded / e.total) * 100); 
+      857 +          $('#uploadBar').style.width = pct + '%';            
+      858 +          $('#uploadPercent').textContent = `업로드 중... ${pc
+          +t}%`;                                                         
+      859 +        }                                                     
+      860 +      };                                                      
+      861 +      xhr.send(formData);                                     
+      862 +    });                                                       
+      863 +  },                                                          
+      864  };
+      865  
+      866  // ===========================================================
+           ==================
+     ...
+      877  function formatTime(seconds) {
+      878    if (!seconds || seconds < 0) return '-';
+      879    const s = Math.floor(seconds);
+      760 -  if (s < 60) return `${s}s`;                                 
+      761 -  if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;       
+      762 -  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+      880 +  if (s < 60) return `${s}초`;                                
+      881 +  if (s < 3600) return `${Math.floor(s/60)}분 ${s%60}초`;     
+      882 +  return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}
+          +분`;                                                          
+      883  }
+      884  
+      885 +function formatFileSize(bytes) {                              
+      886 +  if (bytes < 1024) return bytes + ' B';                      
+      887 +  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 
+          +' KB';                                                        
+      888 +  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';          
+      889 +}                                                             
+      890 +                                                              
+      891  function _saveInputs() {
+      892    const keys = [
+      767 -    'serverUrl','datasetDir','datasetName','customTag','prepro
+          -cessOutDir',                                                  
+      893 +    'serverUrl','datasetName','customTag','preprocessOutDir', 
+      894      'tensorDir','trainOutputDir','loraPath','genCaption','genL
+           yrics',
+      895    ];
+      896    const data = {};
+     ...
+      930      const resp = await API.health();
+      931      State.connected = true;
+      932      $('#statusDot').classList.add('connected');
+      807 -    toast('Server connected', 'success');                     
+      933 +    toast('서버에 연결되었습니다', 'success');                
+      934      // Also try to fetch LoRA status
+      935      try {
+      936        const lr = await API.loraStatus();
+     ...
+       939    } catch (e) {
+       940      State.connected = false;
+       941      $('#statusDot').classList.remove('connected');
+       816 -    toast(`Connection failed: ${e.message}`, 'error');       
+       942 +    toast(`연결 실패: ${e.message}`, 'error');               
+       943    }
+       944  }
+       945  
+       946  // ==========================================================
+            ===================
+       821 -// Step 1: Dataset Scan                                      
+       947 +// Step 1: File Upload + Dataset Scan                        
+       948  // ==========================================================
+            ===================
+       823 -async function scanDataset() {                               
+       949 +function _initDropZone() {                                   
+       950 +  const dropZone = $('#dropZone');                           
+       951 +  const fileInput = $('#fileInput');                         
+       952 +  const browseLink = $('#browseLink');                       
+       953 +                                                             
+       954 +  browseLink.addEventListener('click', (e) => {              
+       955 +    e.stopPropagation();                                     
+       956 +    fileInput.click();                                       
+       957 +  });                                                        
+       958 +  dropZone.addEventListener('click', () => fileInput.click())
+           +;                                                            
+       959 +                                                             
+       960 +  fileInput.addEventListener('change', () => {               
+       961 +    _handleFiles(Array.from(fileInput.files));               
+       962 +  });                                                        
+       963 +                                                             
+       964 +  dropZone.addEventListener('dragover', (e) => {             
+       965 +    e.preventDefault();                                      
+       966 +    dropZone.classList.add('drag-over');                     
+       967 +  });                                                        
+       968 +  dropZone.addEventListener('dragleave', () => {             
+       969 +    dropZone.classList.remove('drag-over');                  
+       970 +  });                                                        
+       971 +  dropZone.addEventListener('drop', (e) => {                 
+       972 +    e.preventDefault();                                      
+       973 +    dropZone.classList.remove('drag-over');                  
+       974 +    const files = Array.from(e.dataTransfer.files);          
+       975 +    _handleFiles(files);                                     
+       976 +  });                                                        
+       977 +}                                                            
+       978 +                                                             
+       979 +function _handleFiles(files) {                               
+       980 +  const AUDIO_EXT = ['.mp3','.wav','.flac','.ogg','.aac','.m4
+           +a','.wma','.opus'];                                          
+       981 +  const audioFiles = files.filter(f => {                     
+       982 +    const ext = f.name.substring(f.name.lastIndexOf('.')).toL
+           +owerCase();                                                  
+       983 +    return AUDIO_EXT.includes(ext);                          
+       984 +  });                                                        
+       985 +                                                             
+       986 +  if (audioFiles.length === 0) {                             
+       987 +    toast('지원되는 오디오 파일이 없습니다', 'error');       
+       988 +    return;                                                  
+       989 +  }                                                          
+       990 +                                                             
+       991 +  State.selectedFiles = audioFiles;                          
+       992 +  const totalSize = audioFiles.reduce((sum, f) => sum + f.siz
+           +e, 0);                                                       
+       993 +                                                             
+       994 +  $('#selectedFilesSummary').classList.remove('hidden');     
+       995 +  $('#selectedFilesSummary').textContent = `선택된 파일: ${au
+           +dioFiles.length}개 (총 ${formatFileSize(totalSize)})`;       
+       996 +                                                             
+       997 +  const listEl = $('#selectedFilesList');                    
+       998 +  listEl.classList.remove('hidden');                         
+       999 +  listEl.innerHTML = audioFiles.map(f => `${f.name} (${format
+           +FileSize(f.size)})`).join('\n');                             
+      1000 +                                                             
+      1001 +  $('#btnUploadScan').disabled = false;                      
+      1002 +                                                             
+      1003 +  if (files.length > audioFiles.length) {                    
+      1004 +    const skipped = files.length - audioFiles.length;        
+      1005 +    toast(`${skipped}개 파일이 지원되지 않는 형식으로 제외되 
+           +었습니다`, 'info');                                          
+      1006 +  }                                                          
+      1007 +}                                                            
+      1008 +                                                             
+      1009 +async function uploadAndScan() {                             
+      1010    _saveInputs();
+       825 -  const dir = $('#datasetDir').value.trim();                 
+      1011    const name = $('#datasetName').value.trim();
+       827 -  if (!dir) return toast('Enter a dataset directory path', 'e
+           -rror');                                                      
+       828 -  if (!name) return toast('Enter a dataset name', 'error');  
+      1012 +  if (!name) return toast('데이터셋 이름을 입력하세요', 'erro
+           +r');                                                         
+      1013 +  if (State.selectedFiles.length === 0) return toast('업로드 
+           +할 파일을 선택하세요', 'error');                             
+      1014  
+      1015 +  const formData = new FormData();                           
+      1016 +  formData.append('dataset_name', name);                     
+      1017 +  State.selectedFiles.forEach(f => formData.append('files', f
+           +));                                                          
+      1018 +                                                             
+      1019 +  $('#btnUploadScan').disabled = true;                       
+      1020 +  $('#uploadProgress').classList.remove('hidden');           
+      1021 +  $('#uploadBar').style.width = '0%';                        
+      1022 +  $('#uploadPercent').textContent = '업로드 중...';          
+      1023 +                                                             
+      1024    try {
+       831 -    const resp = await API.scanDataset({                     
+       832 -      audio_dir: dir,                                        
+      1025 +    // 1) Upload files                                       
+      1026 +    const uploadResp = await API.uploadDataset(formData);    
+      1027 +    const uploadData = uploadResp.data || uploadResp;        
+      1028 +    State.uploadedDir = uploadData.upload_dir;               
+      1029 +                                                             
+      1030 +    toast(`${uploadData.count}개 파일이 업로드되었습니다`, 's
+           +uccess');                                                    
+      1031 +    if (uploadData.skipped_files && uploadData.skipped_files.
+           +length > 0) {                                                
+      1032 +      toast(`${uploadData.skipped_files.length}개 파일이 건너
+           +뛰어졌습니다`, 'info');                                      
+      1033 +    }                                                        
+      1034 +                                                             
+      1035 +    // 2) Auto-scan uploaded directory                       
+      1036 +    $('#uploadPercent').textContent = '스캔 중...';          
+      1037 +    const scanResp = await API.scanDataset({                 
+      1038 +      audio_dir: uploadData.upload_dir,                      
+      1039        dataset_name: name,
+      1040        custom_tag: $('#customTag').value.trim(),
+      1041        is_instrumental: $('#isInstrumental').checked,
+      1042      });
+       837 -    const data = resp.data || resp;                          
+       838 -    State.scanData = data;                                   
+      1043 +    const scanData = scanResp.data || scanResp;              
+      1044 +    State.scanData = scanData;                               
+      1045  
+      1046      const resultEl = $('#scanResult');
+      1047      resultEl.classList.remove('hidden');
+      1048  
+       843 -    const samples = data.samples || [];                      
+      1049 +    const samples = scanData.samples || [];                  
+      1050      if (samples.length > 0) {
+       845 -      resultEl.innerHTML = `<b>${samples.length} files found:
+           -</b>\n` +                                                    
+      1051 +      resultEl.innerHTML = `<b>${samples.length}개 파일 발견:
+           +</b>\n` +                                                    
+      1052          samples.map(s => typeof s === 'string' ? s : (s.file_
+            name || s.audio_path || JSON.stringify(s))).join('\n');
+      1053      } else {
+       848 -      resultEl.innerHTML = data.message || `Scan complete. ${
+           -data.total_files || 0} files found.`;                        
+      1054 +      resultEl.innerHTML = scanData.message || `스캔 완료. ${
+           +scanData.total_files || 0}개 파일 발견.`;                    
+      1055      }
+      1056 +                                                             
+      1057      $('#btnSaveDataset').disabled = false;
+       851 -    toast('Scan complete', 'success');                       
+      1058 +    $('#uploadBar').style.width = '100%';                    
+      1059 +    $('#uploadPercent').textContent = '완료!';               
+      1060 +    toast('업로드 및 스캔이 완료되었습니다', 'success');     
+      1061 +                                                             
+      1062 +    setTimeout(() => { $('#uploadProgress').classList.add('hi
+           +dden'); }, 2000);                                            
+      1063    } catch (e) {
+       853 -    toast(`Scan failed: ${e.message}`, 'error');             
+      1064 +    toast(`업로드 실패: ${e.message}`, 'error');             
+      1065 +    $('#uploadProgress').classList.add('hidden');            
+      1066 +  } finally {                                                
+      1067 +    $('#btnUploadScan').disabled = false;                    
+      1068    }
+      1069  }
+      1070  
+      1071  async function saveDataset() {
+       858 -  if (!State.scanData) return toast('Run scan first', 'error'
+           -);                                                           
+      1072 +  if (!State.scanData) return toast('먼저 파일을 업로드하고  
+           +스캔하세요', 'error');                                       
+      1073    try {
+      1074      const resp = await API.saveDataset({
+      1075        dataset_name: $('#datasetName').value.trim(),
+       862 -      audio_dir: $('#datasetDir').value.trim(),              
+      1076 +      audio_dir: State.uploadedDir || '',                    
+      1077        custom_tag: $('#customTag').value.trim(),
+      1078        is_instrumental: $('#isInstrumental').checked,
+      1079        samples: State.scanData.samples || [],
+      1080      });
+       867 -    toast('Dataset saved', 'success');                       
+      1081 +    toast('데이터셋이 저장되었습니다', 'success');           
+      1082    } catch (e) {
+       869 -    toast(`Save failed: ${e.message}`, 'error');             
+      1083 +    toast(`저장 실패: ${e.message}`, 'error');               
+      1084    }
+      1085  }
+      1086  
+     ...
+      1090  async function startPreprocess() {
+      1091    _saveInputs();
+      1092    const outDir = $('#preprocessOutDir').value.trim();
+       879 -  if (!outDir) return toast('Enter an output directory', 'err
+           -or');                                                        
+      1093 +  if (!outDir) return toast('출력 디렉토리를 입력하세요', 'er
+           +ror');                                                       
+      1094  
+      1095    $('#btnPreprocess').disabled = true;
+      1096    $('#preprocessProgress').classList.remove('hidden');
+     ...
+      1099    try {
+      1100      const resp = await API.preprocessAsync({
+      1101        dataset_name: $('#datasetName').value.trim(),
+       888 -      audio_dir: $('#datasetDir').value.trim(),              
+      1102 +      audio_dir: State.uploadedDir || '',                    
+      1103        output_dir: outDir,
+      1104      });
+      1105      const data = resp.data || resp;
+      1106      State.preprocessTaskId = data.task_id;
+       893 -    toast('Preprocessing started', 'info');                  
+      1107 +    toast('전처리가 시작되었습니다', 'info');                
+      1108      _pollPreprocess();
+      1109    } catch (e) {
+      1110      $('#btnPreprocess').disabled = false;
+       897 -    toast(`Preprocess failed: ${e.message}`, 'error');       
+      1111 +    toast(`전처리 실패: ${e.message}`, 'error');             
+      1112    }
+      1113  }
+      1114  
+     ...
+      1124        $('#preprocessPercent').textContent = `${pct}% (${data.
+            current}/${data.total})`;
+      1125  
+      1126        const elapsed = (Date.now() - State.preprocessStartTime
+            ) / 1000;
+       913 -      $('#preprocessElapsed').textContent = `Elapsed: ${forma
+           -tTime(elapsed)}`;                                            
+       914 -      $('#preprocessFile').textContent = `Status: ${data.prog
+           -ress || data.status || '-'}`;                                
+      1127 +      $('#preprocessElapsed').textContent = `경과: ${formatTi
+           +me(elapsed)}`;                                               
+      1128 +      $('#preprocessFile').textContent = `상태: ${data.progre
+           +ss || data.status || '-'}`;                                  
+      1129  
+      1130        if (data.status === 'completed' || data.status === 'don
+            e') {
+      1131          clearInterval(State.preprocessPollTimer);
+      1132          $('#btnPreprocess').disabled = false;
+      1133          $('#preprocessBar').style.width = '100%';
+       920 -        $('#preprocessPercent').textContent = '100% Complete'
+           -;                                                            
+       921 -        toast('Preprocessing complete!', 'success');         
+      1134 +        $('#preprocessPercent').textContent = '100% 완료';   
+      1135 +        toast('전처리가 완료되었습니다!', 'success');        
+      1136  
+      1137          // Auto-fill tensor dir
+      1138          if (data.result && data.result.output_dir) {
+     ...
+      1141        } else if (data.status === 'error' || data.status === '
+            failed') {
+      1142          clearInterval(State.preprocessPollTimer);
+      1143          $('#btnPreprocess').disabled = false;
+       930 -        toast(`Preprocess error: ${data.error || 'Unknown err
+           -or'}`, 'error');                                             
+      1144 +        toast(`전처리 오류: ${data.error || '알 수 없는 오류'
+           +}`, 'error');                                                
+      1145        }
+      1146      } catch (e) {
+      1147        clearInterval(State.preprocessPollTimer);
+      1148        $('#btnPreprocess').disabled = false;
+       935 -      toast(`Polling error: ${e.message}`, 'error');         
+      1149 +      toast(`폴링 오류: ${e.message}`, 'error');             
+      1150      }
+      1151    }, 2000);
+      1152  }
+     ...
+      1156  // ==========================================================
+            ===================
+      1157  async function loadTensorInfo() {
+      1158    const dir = $('#tensorDir').value.trim();
+       945 -  if (!dir) return toast('Enter a tensor directory', 'error')
+           -;                                                            
+      1159 +  if (!dir) return toast('텐서 디렉토리를 입력하세요', 'error
+           +');                                                          
+      1160    try {
+      1161      const resp = await API.loadTensorInfo({ tensor_dir: dir }
+            );
+      1162      const data = resp.data || resp;
+      1163      $('#tensorInfo').classList.remove('hidden');
+       950 -    $('#tensorInfoText').innerHTML = data.message || `Loaded:
+           - ${data.num_samples} samples`;                               
+       951 -    toast('Tensor info loaded', 'success');                  
+      1164 +    $('#tensorInfoText').innerHTML = data.message || `로드 완
+           +료: ${data.num_samples}개 샘플`;                             
+      1165 +    toast('텐서 정보를 불러왔습니다', 'success');            
+      1166    } catch (e) {
+       953 -    toast(`Load failed: ${e.message}`, 'error');             
+      1167 +    toast(`불러오기 실패: ${e.message}`, 'error');           
+      1168    }
+      1169  }
+      1170  
+      1171  async function startTraining() {
+      1172    _saveInputs();
+      1173    const tensorDir = $('#tensorDir').value.trim();
+       960 -  if (!tensorDir) return toast('Enter tensor directory and lo
+           -ad tensor info first', 'error');                             
+      1174 +  if (!tensorDir) return toast('텐서 디렉토리를 입력하고 텐서
+           + 정보를 먼저 불러오세요', 'error');                          
+      1175  
+      1176    const rank = parseInt($('#trainRank').value);
+      1177    let alpha = $('#trainAlpha').value;
+     ...
+      1196  
+      1197    try {
+      1198      await API.startTraining(params);
+       985 -    toast('Training started', 'info');                       
+      1199 +    toast('트레이닝이 시작되었습니다', 'info');              
+      1200      _pollTraining();
+      1201    } catch (e) {
+      1202      $('#btnStartTrain').disabled = false;
+      1203      $('#btnStopTrain').disabled = true;
+       990 -    toast(`Training failed: ${e.message}`, 'error');         
+      1204 +    toast(`트레이닝 실패: ${e.message}`, 'error');           
+      1205    }
+      1206  }
+      1207  
+      1208  async function stopTraining() {
+      1209    try {
+      1210      await API.stopTraining();
+       997 -    toast('Stopping training...', 'info');                   
+      1211 +    toast('트레이닝을 중지하고 있습니다...', 'info');        
+      1212    } catch (e) {
+       999 -    toast(`Stop failed: ${e.message}`, 'error');             
+      1213 +    toast(`중지 실패: ${e.message}`, 'error');               
+      1214    }
+      1215  }
+      1216  
+     ...
+      1230        $('#trainEpochCur').textContent = curEpoch;
+      1231        $('#trainEpochTotal').textContent = epochs;
+      1232        $('#trainLossCur').textContent = ts.current_loss != nul
+            l ? parseFloat(ts.current_loss).toFixed(4) : '-';
+      1019 -      $('#trainStatus').textContent = ts.status || 'Unknown';
+      1233 +      $('#trainStatus').textContent = ts.status || '알 수 없 
+           +음';                                                         
+      1234  
+      1235        if (ts.start_time) {
+      1236          const elapsed = (Date.now() / 1000) - ts.start_time;
+     ...
+      1258          $('#btnStartTrain').disabled = false;
+      1259          $('#btnStopTrain').disabled = true;
+      1260          if (ts.error) {
+      1047 -          toast(`Training error: ${ts.error}`, 'error');     
+      1261 +          toast(`트레이닝 오류: ${ts.error}`, 'error');      
+      1262          } else {
+      1263            $('#trainBar').style.width = '100%';
+      1050 -          $('#trainPercent').textContent = '100% Complete';  
+      1051 -          toast('Training complete!', 'success');            
+      1264 +          $('#trainPercent').textContent = '100% 완료';      
+      1265 +          toast('트레이닝이 완료되었습니다!', 'success');    
+      1266          }
+      1267        }
+      1268      } catch (e) {
+     ...
+      1326  
+      1327    // X-axis label
+      1328    ctx.textAlign = 'center';
+      1115 -  ctx.fillText('Epoch', W / 2, H - 4);                       
+      1329 +  ctx.fillText('에포크', W / 2, H - 4);                      
+      1330  
+      1331    // Line
+      1332    ctx.strokeStyle = '#e94560';
+     ...
+      1345    ctx.fillStyle = '#e94560';
+      1346    ctx.font = 'bold 11px -apple-system, sans-serif';
+      1347    ctx.textAlign = 'right';
+      1134 -  ctx.fillText(`Loss: ${lastVal.toFixed(4)}`, W - pad.right, 
+           -pad.top - 6);                                                
+      1348 +  ctx.fillText(`손실: ${lastVal.toFixed(4)}`, W - pad.right, 
+           +pad.top - 6);                                                
+      1349  }
+      1350  
+      1351  // ==========================================================
+            ===================
+     ...
+      1354  async function loadLora() {
+      1355    _saveInputs();
+      1356    const path = $('#loraPath').value.trim();
+      1143 -  if (!path) return toast('Enter a LoRA path', 'error');     
+      1357 +  if (!path) return toast('LoRA 경로를 입력하세요', 'error');
+      1358    try {
+      1359      const resp = await API.loadLora({ lora_path: path });
+      1360      const data = resp.data || resp;
+      1147 -    toast(data.message || 'LoRA loaded', 'success');         
+      1361 +    toast(data.message || 'LoRA가 로드되었습니다', 'success')
+           +;                                                            
+      1362      $('#loraEnabled').checked = true;
+      1363      _refreshLoraStatus();
+      1364    } catch (e) {
+      1151 -    toast(`Load LoRA failed: ${e.message}`, 'error');        
+      1365 +    toast(`LoRA 로드 실패: ${e.message}`, 'error');          
+      1366    }
+      1367  }
+      1368  
+     ...
+      1370    try {
+      1371      const resp = await API.unloadLora();
+      1372      const data = resp.data || resp;
+      1159 -    toast(data.message || 'LoRA unloaded', 'success');       
+      1373 +    toast(data.message || 'LoRA가 해제되었습니다', 'success')
+           +;                                                            
+      1374      $('#loraEnabled').checked = false;
+      1375      _refreshLoraStatus();
+      1376    } catch (e) {
+      1163 -    toast(`Unload failed: ${e.message}`, 'error');           
+      1377 +    toast(`해제 실패: ${e.message}`, 'error');               
+      1378    }
+      1379  }
+      1380  
+     ...
+      1382    try {
+      1383      const use = $('#loraEnabled').checked;
+      1384      await API.toggleLora({ use_lora: use });
+      1171 -    toast(use ? 'LoRA enabled' : 'LoRA disabled', 'info');   
+      1385 +    toast(use ? 'LoRA 활성화됨' : 'LoRA 비활성화됨', 'info');
+      1386    } catch (e) {
+      1173 -    toast(`Toggle failed: ${e.message}`, 'error');           
+      1387 +    toast(`전환 실패: ${e.message}`, 'error');               
+      1388    }
+      1389  }
+      1390  
+     ...
+      1397      const scale = parseFloat($('#loraScale').value);
+      1398      await API.setLoraScale({ scale });
+      1399    } catch (e) {
+      1186 -    toast(`Scale failed: ${e.message}`, 'error');            
+      1400 +    toast(`강도 설정 실패: ${e.message}`, 'error');          
+      1401    }
+      1402  }
+      1403  
+     ...
+      1419    $('#loraScaleVal').textContent = parseFloat(scale).toFixed(
+            2);
+      1420  
+      1421    if (loaded) {
+      1208 -    $('#loraStatusText').innerHTML = `LoRA: <b style="color:v
+           -ar(--success)">Loaded</b> | ` +                              
+      1209 -      `Active: ${active ? 'Yes' : 'No'} | Scale: ${parseFloat
+           -(scale).toFixed(2)} | Adapter: ${adapter}`;                  
+      1422 +    $('#loraStatusText').innerHTML = `LoRA: <b style="color:v
+           +ar(--success)">로드됨</b> | ` +                              
+      1423 +      `활성: ${active ? '예' : '아니오'} | 강도: ${parseFloat
+           +(scale).toFixed(2)} | 어댑터: ${adapter}`;                   
+      1424    } else {
+      1211 -    $('#loraStatusText').textContent = 'LoRA: Not loaded';   
+      1425 +    $('#loraStatusText').textContent = 'LoRA: 로드되지 않음';
+      1426    }
+      1427  }
+      1428  
+     ...
+      1432  async function generateMusic() {
+      1433    _saveInputs();
+      1434    const caption = $('#genCaption').value.trim();
+      1221 -  if (!caption) return toast('Enter a caption/description', '
+           -error');                                                     
+      1435 +  if (!caption) return toast('캡션/설명을 입력하세요', 'error
+           +');                                                          
+      1436  
+      1437    const duration = parseInt($('#genDuration').value);
+      1438    const language = $('#genLanguage').value;
+     ...
+      1458      const resp = await API.releaseTask(params);
+      1459      const data = resp.data || resp;
+      1460      State.genTaskId = data.task_id;
+      1247 -    toast('Generation started', 'info');                     
+      1461 +    toast('음악 생성이 시작되었습니다', 'info');             
+      1462      _pollGeneration();
+      1463    } catch (e) {
+      1464      $('#btnGenerate').disabled = false;
+      1465      $('#genProgress').classList.add('hidden');
+      1252 -    toast(`Generation failed: ${e.message}`, 'error');       
+      1466 +    toast(`음악 생성 실패: ${e.message}`, 'error');          
+      1467    }
+      1468  }
+      1469  
+     ...
+      1480        // Progress animation
+      1481        const fakePct = Math.min(95, Math.round(elapsed * 2));
+      1482        $('#genBar').style.width = fakePct + '%';
+      1269 -      $('#genPercent').textContent = `Generating... ${formatT
+           -ime(elapsed)}`;                                              
+      1483 +      $('#genPercent').textContent = `생성 중... ${formatTime
+           +(elapsed)}`;                                                 
+      1484  
+      1485        if (Array.isArray(results) && results.length > 0 && res
+            ults[0].status === 1) {
+      1486          clearInterval(State.genPollTimer);
+      1487          $('#genBar').style.width = '100%';
+      1274 -        $('#genPercent').textContent = 'Complete!';          
+      1488 +        $('#genPercent').textContent = '완료!';              
+      1489          $('#btnGenerate').disabled = false;
+      1490  
+      1491          // Parse result
+     ...
+      1498  
+      1499          if (Array.isArray(audioItems) && audioItems.length > 
+            0) {
+      1500            _showAudioResults(audioItems);
+      1287 -          toast('Music generated!', 'success');              
+      1501 +          toast('음악이 생성되었습니다!', 'success');        
+      1502          } else {
+      1289 -          toast('Generation complete but no audio returned', 
+           -'warning');                                                  
+      1503 +          toast('생성은 완료되었으나 오디오가 반환되지 않았습
+           +니다', 'warning');                                           
+      1504          }
+      1505  
+      1506          setTimeout(() => { $('#genProgress').classList.add('h
+            idden'); }, 2000);
+     ...
+      1522      div.style.marginBottom = '12px';
+      1523  
+      1524      let metaHtml = '';
+      1311 -    if (item.caption) metaHtml += `<div style="font-size:0.8e
+           -m;color:var(--text-dim)">Caption: ${_esc(item.caption)}</div>
+           -`;                                                           
+      1525 +    if (item.caption) metaHtml += `<div style="font-size:0.8e
+           +m;color:var(--text-dim)">캡션: ${_esc(item.caption)}</div>`; 
+      1526      if (item.bpm) metaHtml += `<span class="stat" style="marg
+            in-right:6px">BPM: ${item.bpm}</span>`;
+      1313 -    if (item.keyscale) metaHtml += `<span class="stat" style=
+           -"margin-right:6px">Key: ${item.keyscale}</span>`;            
+      1314 -    if (item.duration) metaHtml += `<span class="stat" style=
+           -"margin-right:6px">Duration: ${item.duration}s</span>`;      
+      1315 -    if (item.seed != null) metaHtml += `<span class="stat">Se
+           -ed: ${item.seed}</span>`;                                    
+      1527 +    if (item.keyscale) metaHtml += `<span class="stat" style=
+           +"margin-right:6px">키: ${item.keyscale}</span>`;             
+      1528 +    if (item.duration) metaHtml += `<span class="stat" style=
+           +"margin-right:6px">재생 시간: ${item.duration}초</span>`;    
+      1529 +    if (item.seed != null) metaHtml += `<span class="stat">시
+           +드: ${item.seed}</span>`;                                    
+      1530  
+      1531      div.innerHTML = `
+      1318 -      <div style="font-weight:600;margin-bottom:4px;color:var
+           -(--text-bright)">Track ${idx + 1}</div>                      
+      1532 +      <div style="font-weight:600;margin-bottom:4px;color:var
+           +(--text-bright)">트랙 ${idx + 1}</div>                       
+      1533        ${metaHtml}
+      1534        <audio controls preload="auto" style="width:100%;margin
+            -top:6px">
+      1535          <source src="${_esc(url)}" type="audio/flac">
+      1536          <source src="${_esc(url)}" type="audio/mpeg">
+      1537        </audio>
+      1324 -      <a href="${_esc(url)}" download class="btn btn-secondar
+           -y btn-small" style="margin-top:6px;text-decoration:none;displ
+           -ay:inline-flex">Download</a>                                 
+      1538 +      <a href="${_esc(url)}" download class="btn btn-secondar
+           +y btn-small" style="margin-top:6px;text-decoration:none;displ
+           +ay:inline-flex">다운로드</a>                                 
+      1539      `;
+      1540      container.appendChild(div);
+      1541    });
+
+⏺ Both files have been updated. Here's a summary of what was done:
+
+  api_routes.py — 파일 업로드 엔드포인트 추가
+
+  - UploadFile, File, Form을 FastAPI import에 추가
+  - POST /v1/dataset/upload 엔드포인트 추가 — multipart/form-data로 오디오 파일
+  다중 수신, datasets/uploads/{dataset_name}/에 저장, 허용 확장자 필터링
+
+  index.html — 전면 한국어화 + 파일 업로드 UI
+
+  한국어화:
+  - 타이틀, 서브타이틀, 탭 이름, 모든 카드 제목/설명, 라벨, 버튼, placeholder,
+  토스트 메시지, 가사 힌트 등 전체 한국어 번역
+  - 각 Step에 card-desc 설명 추가 (데이터셋 준비, 전처리, 트레이닝, LoRA 설정,
+  생성 설정)
+
+  파일 업로드 UI (Step 1):
+  - 기존 디렉토리 경로 입력 → 드래그 앤 드롭 + 파일 선택 영역으로 교체
+  - 선택된 파일 목록 실시간 표시 (파일명 + 크기)
+  - XHR 기반 업로드 프로그레스 바
+  - [업로드 & 스캔] 버튼: 파일 업로드 → 자동 스캔 체인
+  - _initDropZone(), _handleFiles(), uploadAndScan() 등 새 JS 함수 추가
+  - API.uploadDataset() — FormData + XHR (progress 이벤트 활용)
+
+✻ Cooked for 4m 12s
+
+❯ 현재까지의 작업 내용을 md 파일로 정리해줘 
+
+⏺ Write(CHANGELOG-korean-upload-ui.md)
+  ⎿  Wrote 262 lines to CHANGELOG-korean-upload-ui.md
+       1 # index.html 한국어화 + 파일 업로드 UI 적용 — 작업 내역
+       2 
+       3 ## 작업 일시
+       4 
+       5 2026-02-20
+       6 
+       7 ## 수정 파일 목록
+       8 
+       9 | 파일 | 변경 유형 |
+      10 |------|-----------|
+     … +252 lines (ctrl+o to expand)
+
+⏺ CHANGELOG-korean-upload-ui.md 파일을 프로젝트 루트에 생성했습니다. 내용 요약:
+
+  - 수정 파일 2개와 각 파일의 변경 유형
+  - api_routes.py: import 추가, 업로드 엔드포인트 스펙 + 응답 형식
+  - index.html 한국어화: 모든 번역 대조표 (영문 → 한국어) — 헤더, 탭, 카드,
+  라벨, 버튼, 토스트, 시간 포맷
+  - 파일 업로드 UI: 기존/변경 구조 비교, HTML/CSS/JS 추가 요소, 업로드 흐름도
+  - 검증 체크리스트 5항목
+
+✻ Baked for 1m 5s
+
+❯ 단순히 CHANGELOG 뿐만 아니라 상단에 실행 방법도 추가해줘. 서버 실행,      
+  python 클라이언트 실행. 관련 이슈 포함.                                   
+
+⏺ 먼저 프로젝트의 실행 관련 파일들을 확인하겠습니다.
+
+⏺ Searched for 11 patterns, read 6 files (ctrl+o to expand)
+
+⏺ Let me check the rest of the setup plan for known issues.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Now I have full context. Let me rewrite the file with execution instructions
+  and known issues at the top.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Now I'll rewrite the file with execution guide and known issues prepended.
+
+⏺ Write(CHANGELOG-korean-upload-ui.md)
+  ⎿  Added 315 lines, removed 25 lines
+        1 -# index.html 한국어화 + 파일 업로드 UI 적용 — 작업 내역       
+        1 +# mixgrv — 실행 가이드 & 작업 내역                            
+        2  
+        3 -## 작업 일시                                                  
+        3 +## 목차                                                       
+        4  
+        5 +- [실행 방법](#실행-방법)                                     
+        6 +  - [1. 서버 실행 (ACE-Step Gradio + API)](#1-서버-실행-ace-st
+          +ep-gradio--api)                                               
+        7 +  - [2. 클라이언트 실행 (index.html)](#2-클라이언트-실행-index
+          +html)                                                         
+        8 +  - [3. Python 클라이언트 실행](#3-python-클라이언트-실행)    
+        9 +- [알려진 이슈](#알려진-이슈)                                 
+       10 +- [작업 내역: 한국어화 + 파일 업로드 UI](#작업-내역-한국어화--
+          +파일-업로드-ui)                                               
+       11 +                                                              
+       12 +---                                                           
+       13 +                                                              
+       14 +## 실행 방법                                                  
+       15 +                                                              
+       16 +### 사전 요구사항                                             
+       17 +                                                              
+       18 +| 항목 | 필수 여부 | 설치 방법 |                              
+       19 +|------|-----------|-----------|                              
+       20 +| macOS Apple Silicon (M1/M2/M3/M4) | 필수 | - |              
+       21 +| Python 3.12 | 자동 (uv가 관리) | - |                        
+       22 +| uv (패키지 매니저) | 필수 | `curl -LsSf https://astral.sh/uv
+          +/install.sh \| sh` 또는 `brew install uv` |                   
+       23 +| FFmpeg | 필수 (전처리) | `brew install ffmpeg` |            
+       24 +                                                              
+       25 +### 1. 서버 실행 (ACE-Step Gradio + API)                      
+       26 +                                                              
+       27 +> **중요**: `index.html`의 트레이닝/음악 생성 기능을 사용하려 
+          +면 `.env`에 `ENABLE_API=--enable-api`가 설정되어 있어야 합니다
+          +.                                                             
+       28 +                                                              
+       29 +#### 방법 A: macOS 런치 스크립트 (권장)                       
+       30 +                                                              
+       31 +```bash                                                       
+       32 +cd ACE-Step-1.5                                               
+       33 +bash start_gradio_ui_macos.sh                                 
+       34 +```                                                           
+       35 +                                                              
+       36 +- 자동으로 MLX 백엔드 설정, 의존성 설치, 모델 다운로드 처리   
+       37 +- 기본 주소: `http://127.0.0.1:7860`                          
+       38 +- 첫 실행 시 HuggingFace에서 모델 자동 다운로드 (~2분 40초)   
+       39 +                                                              
+       40 +#### 방법 B: 직접 실행                                        
+       41 +                                                              
+       42 +```bash                                                       
+       43 +cd ACE-Step-1.5                                               
+       44 +export ACESTEP_LM_BACKEND=mlx                                 
+       45 +uv run acestep --backend mlx --enable-api                     
+       46 +```                                                           
+       47 +                                                              
+       48 +#### 서버 설정 변경                                           
+       49 +                                                              
+       50 +`.env` 파일에서 설정 가능 (런치 스크립트가 자동으로 읽음):    
+       51 +                                                              
+       52 +```env                                                        
+       53 +# 모델 설정                                                   
+       54 +ACESTEP_CONFIG_PATH=acestep-v15-turbo                         
+       55 +ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-1.7B                     
+       56 +ACESTEP_LM_BACKEND=mlx                                        
+       57 +                                                              
+       58 +# 서버 설정                                                   
+       59 +PORT=7860                                                     
+       60 +SERVER_NAME=127.0.0.1                                         
+       61 +                                                              
+       62 +# API 활성화 (mixgrv index.html 사용 시 필수)                 
+       63 +ENABLE_API=--enable-api                                       
+       64 +                                                              
+       65 +# API 키 (선택)                                               
+       66 +# ACESTEP_API_KEY=sk-your-secret-key                          
+       67 +```                                                           
+       68 +                                                              
+       69 +#### 서버 종료                                                
+       70 +                                                              
+       71 +```bash                                                       
+       72 +# 터미널에서                                                  
+       73 +Ctrl+C                                                        
+       74 +                                                              
+       75 +# 또는 포트로 프로세스 찾아서 종료                            
+       76 +lsof -i :7860                                                 
+       77 +kill <PID>                                                    
+       78 +```                                                           
+       79 +                                                              
+       80 +### 2. 클라이언트 실행 (index.html)                           
+       81 +                                                              
+       82 +서버가 실행된 상태에서 `index.html`을 브라우저에서 열면 됩니다
+          +.                                                             
+       83 +                                                              
+       84 +```bash                                                       
+       85 +# 프로젝트 루트에서                                           
+       86 +open index.html                                               
+       87 +```                                                           
+       88 +                                                              
+       89 +또는 브라우저에서 직접 파일 열기:                             
+       90 +```                                                           
+       91 +file:///Users/joel/Desktop/gonasoo.dev/repositories/mixgrv/ind
+          +ex.html                                                       
+       92 +```                                                           
+       93 +                                                              
+       94 +> **참고**: `index.html`은 정적 파일이므로 별도 웹 서버가 필요
+          + 없습니다. `file://` 프로토콜로 직접 열 수 있습니다. CORS 설정
+          +이 `null` origin을 허용하도록 되어 있습니다.                  
+       95 +                                                              
+       96 +#### 사용 흐름                                                
+       97 +                                                              
+       98 +```                                                           
+       99 +1. 서버 연결: 서버 주소 입력 → [연결] 클릭 (기본값: http://127
+          +.0.0.1:7860)                                                  
+      100 +                                                              
+      101 +2. 트레이닝 탭:                                               
+      102 +   Step 1: 오디오 파일 드래그 앤 드롭 → [업로드 & 스캔] → [데 
+          +이터셋 저장]                                                  
+      103 +   Step 2: [전처리 시작] → 텐서 변환 완료 대기                
+      104 +   Step 3: 텐서 디렉토리 로드 → 하이퍼파라미터 설정 → [트레이 
+          +닝 시작]                                                      
+      105 +                                                              
+      106 +3. 음악 생성 탭:                                              
+      107 +   LoRA 로드 (선택) → 캡션/가사/설정 입력 → [음악 생성]       
+      108 +```                                                           
+      109 +                                                              
+      110 +### 3. Python 클라이언트 실행                                 
+      111 +                                                              
+      112 +`gradio_client`를 사용한 프로그래밍 방식의 접근:              
+      113 +                                                              
+      114 +#### 음악 생성                                                
+      115 +                                                              
+      116 +```python                                                     
+      117 +from gradio_client import Client                              
+      118 +                                                              
+      119 +client = Client('http://127.0.0.1:7860')                      
+      120 +                                                              
+      121 +# 음악 생성                                                   
+      122 +result = client.predict(                                      
+      123 +    'upbeat electronic pop, bright synth melody',  # Caption  
+      124 +    '[verse]\nHello world\n[chorus]\nLa la la',     # Lyrics  
+      125 +    120,        # BPM                                         
+      126 +    'C major',  # Key                                         
+      127 +    '4/4',      # Time Signature                              
+      128 +    'en',       # Language                                    
+      129 +    8,          # DiT Steps                                   
+      130 +    7.0,        # Guidance Scale                              
+      131 +    True, -1,   # Random Seed                                 
+      132 +    None,       # Reference Audio                             
+      133 +    30,         # Duration (seconds)                          
+      134 +    1,          # Batch Size                                  
+      135 +    api_name='/generation_wrapper'                            
+      136 +)                                                             
+      137 +```                                                           
+      138 +                                                              
+      139 +#### LoRA 트레이닝 (Python)                                   
+      140 +                                                              
+      141 +```python                                                     
+      142 +from gradio_client import Client                              
+      143 +client = Client('http://127.0.0.1:7860')                      
+      144 +                                                              
+      145 +# 1. 데이터셋 로드                                            
+      146 +client.predict(                                               
+      147 +    tensor_dir='./datasets/preprocessed_tensors',             
+      148 +    api_name='/load_training_dataset'                         
+      149 +)                                                             
+      150 +                                                              
+      151 +# 2. 트레이닝 시작                                            
+      152 +client.predict(                                               
+      153 +    tensor_dir='./datasets/preprocessed_tensors',             
+      154 +    r=64, a=128, d=0.1, lr=0.0003,                            
+      155 +    ep=100, bs=1, ga=1, se=50, sh=3.0, sd=42,                 
+      156 +    od='./lora_output/my_model',                              
+      157 +    rc=None,                                                  
+      158 +    api_name='/training_wrapper'                              
+      159 +)                                                             
+      160 +```                                                           
+      161 +                                                              
+      162 +#### LoRA 로드 및 적용                                        
+      163 +                                                              
+      164 +```python                                                     
+      165 +# LoRA 로드 & 활성화                                          
+      166 +client.predict(lora_path='./lora_output/my_model/final/adapter
+          +', api_name='/load_lora')                                     
+      167 +client.predict(True, api_name='/set_use_lora')    # 활성화    
+      168 +client.predict(0.8, api_name='/set_lora_scale')   # Scale 0.8 
+      169 +                                                              
+      170 +# LoRA 해제                                                   
+      171 +client.predict(api_name='/unload_lora')                       
+      172 +```                                                           
+      173 +                                                              
+      174 +#### REST API 직접 호출 (curl)                                
+      175 +                                                              
+      176 +```bash                                                       
+      177 +# 서버 상태 확인                                              
+      178 +curl http://127.0.0.1:7860/health                             
+      179 +                                                              
+      180 +# 음악 생성                                                   
+      181 +curl -X POST http://127.0.0.1:7860/release_task \             
+      182 +  -H "Content-Type: application/json" \                       
+      183 +  -d '{                                                       
+      184 +    "prompt": "dreamy lo-fi beat with soft piano",            
+      185 +    "lyrics": "",                                             
+      186 +    "bpm": 80,                                                
+      187 +    "audio_duration": 30,                                     
+      188 +    "batch_size": 1                                           
+      189 +  }'                                                          
+      190 +                                                              
+      191 +# 파일 업로드 (multipart)                                     
+      192 +curl -X POST http://127.0.0.1:7860/v1/dataset/upload \        
+      193 +  -F "dataset_name=my_dataset" \                              
+      194 +  -F "files=@track01.mp3" \                                   
+      195 +  -F "files=@track02.wav"                                     
+      196 +```                                                           
+      197 +                                                              
+      198 +---                                                           
+      199 +                                                              
+      200 +## 알려진 이슈                                                
+      201 +                                                              
+      202 +### MPS 트레이닝 NaN 그래디언트 (Apple Silicon 필수 패치)     
+      203 +                                                              
+      204 +**증상**: 트레이닝 시작 후 loss가 `NaN`으로 발산              
+      205 +                                                              
+      206 +**원인 1**: `trainer.py`의 MPS float16 mixed precision        
+      207 +                                                              
+      208 +**해결**: `ACE-Step-1.5/acestep/training/trainer.py`에서 MPS  
+          +관련 함수 수정:                                               
+      209 +                                                              
+      210 +```python                                                     
+      211 +# 변경 전 (float16 → NaN 발생)                                
+      212 +def _select_compute_dtype(device_type: str) -> torch.dtype:   
+      213 +    if device_type == "mps":                                  
+      214 +        return torch.float16                                  
+      215 +                                                              
+      216 +def _select_fabric_precision(device_type: str) -> str:        
+      217 +    if device_type == "mps":                                  
+      218 +        return "16-mixed"                                     
+      219 +                                                              
+      220 +# 변경 후 (float32 → NaN 해결)                                
+      221 +def _select_compute_dtype(device_type: str) -> torch.dtype:   
+      222 +    if device_type == "mps":                                  
+      223 +        return torch.float32                                  
+      224 +                                                              
+      225 +def _select_fabric_precision(device_type: str) -> str:        
+      226 +    if device_type == "mps":                                  
+      227 +        return "32-true"                                      
+      228 +```                                                           
+      229 +                                                              
+      230 +**원인 2**: 전처리 텐서의 `encoder_hidden_states`에 float16 오
+          +버플로우로 NaN 포함                                           
+      231 +                                                              
+      232 +**해결**: 전처리 후 NaN 값 치환 스크립트 실행:                
+      233 +                                                              
+      234 +```python                                                     
+      235 +import torch, glob                                            
+      236 +                                                              
+      237 +for f in glob.glob('./datasets/preprocessed_tensors/*.pt'):   
+      238 +    pt = torch.load(f, map_location='cpu', weights_only=True) 
+      239 +    for k, v in pt.items():                                   
+      240 +        if isinstance(v, torch.Tensor) and torch.isnan(v).any(
+          +):                                                            
+      241 +            pt[k] = torch.nan_to_num(v, nan=0.0)              
+      242 +    torch.save(pt, f)                                         
+      243 +```                                                           
+      244 +                                                              
+      245 +### Gradio 보안 경로 제한                                     
+      246 +                                                              
+      247 +**증상**: Gradio UI에서 프로젝트 외부 경로 접근 시 `Rejected u
+          +nsafe directory path` 에러                                    
+      248 +                                                              
+      249 +**해결**: 데이터셋 파일을 반드시 `ACE-Step-1.5/datasets/` 내부
+          +로 복사. `index.html`의 파일 업로드 기능은 이 문제를 자동으로 
+          +해결 — 업로드 파일이 `datasets/uploads/` 디렉토리에 저장됨.   
+      250 +                                                              
+      251 +### 포트 충돌 (7860 이미 사용 중)                             
+      252 +                                                              
+      253 +```bash                                                       
+      254 +lsof -i :7860          # 사용 중인 프로세스 확인              
+      255 +kill <PID>             # 해당 PID 종료                        
+      256 +                                                              
+      257 +# 또는 다른 포트로 실행                                       
+      258 +PORT=7861 bash start_gradio_ui_macos.sh                       
+      259 +```                                                           
+      260 +                                                              
+      261 +### FFmpeg 미설치 시 전처리 실패                              
+      262 +                                                              
+      263 +**증상**: 전처리(Step 2)가 오디오 파일을 읽지 못함            
+      264 +                                                              
+      265 +**해결**:                                                     
+      266 +```bash                                                       
+      267 +brew install ffmpeg                                           
+      268 +```                                                           
+      269 +                                                              
+      270 +### 무시해도 되는 경고                                        
+      271 +                                                              
+      272 +| 경고 메시지 | 설명 |                                        
+      273 +|-------------|------|                                        
+      274 +| `Skipping import of cpp extensions due to incompatible torch
+          + version` | torchao 호환성 경고, 무시 가능 |                  
+      275 +| `bitsandbytes not installed. Using standard AdamW.` | 표준  
+          +옵티마이저 사용, 정상 동작 |                                  
+      276 +| `Standard MLX load failed ... retrying with 'model.' prefix 
+          +remapping` | 자동 복구됨, 무시 가능 |                         
+      277 +                                                              
+      278 +### `ENABLE_API` 미설정 시 index.html 연결 실패               
+      279 +                                                              
+      280 +**증상**: `index.html`에서 서버 연결 시 404 에러              
+      281 +                                                              
+      282 +**원인**: `.env`에 `ENABLE_API=--enable-api` 설정이 빠져 있으 
+          +면 REST API 엔드포인트가 등록되지 않음                        
+      283 +                                                              
+      284 +**해결**: `.env` 파일에 추가:                                 
+      285 +```env                                                        
+      286 +ENABLE_API=--enable-api                                       
+      287 +```                                                           
+      288 +                                                              
+      289 +---                                                           
+      290 +                                                              
+      291 +## 작업 내역: 한국어화 + 파일 업로드 UI                       
+      292 +                                                              
+      293 +### 작업 일시                                                 
+      294 +                                                              
+      295  2026-02-20
+      296  
+        7 -## 수정 파일 목록                                             
+      297 +### 수정 파일 목록                                            
+      298  
+      299  | 파일 | 변경 유형 |
+      300  |------|-----------|
+     ...
+      303  
+      304  ---
+      305  
+       16 -## 1. `api_routes.py` — 파일 업로드 엔드포인트 추가           
+      306 +### 1. `api_routes.py` — 파일 업로드 엔드포인트 추가          
+      307  
+       18 -### 변경 사항                                                 
+      308 +#### 변경 사항                                                
+      309  
+       20 -#### import 추가                                              
+      310 +##### import 추가                                             
+      311  
+      312  ```python
+      313  # 기존
+     ...
+      317  from fastapi import APIRouter, HTTPException, Request, Depends
+           , Header, UploadFile, File, Form
+      318  ```
+      319  
+       30 -#### `POST /v1/dataset/upload` 엔드포인트 추가                
+      320 +##### `POST /v1/dataset/upload` 엔드포인트 추가               
+      321  
+      322  `_register_extended_endpoints()` 함수 내에 LoRA 엔드포인트 앞
+           에 삽입.
+      323  
+     ...
+      351  
+      352  ---
+      353  
+       64 -## 2. `index.html` — 전면 한국어화 + 파일 업로드 UI           
+      354 +### 2. `index.html` — 전면 한국어화 + 파일 업로드 UI          
+      355  
+       66 -### 2-1. 한국어화 범위                                        
+      356 +#### 2-1. 한국어화 범위                                       
+      357  
+       68 -#### 페이지 헤더                                              
+      358 +##### 페이지 헤더                                             
+      359  
+      360  | 항목 | 기존 (영문) | 변경 (한국어) |
+      361  |------|-------------|---------------|
+     ...
+      364  | 서버 라벨 | `Server:` | `서버:` |
+      365  | 연결 버튼 | `Connect` | `연결` |
+      366  
+       77 -#### 탭                                                       
+      367 +##### 탭                                                      
+      368  
+      369  | 기존 | 변경 |
+      370  |------|------|
+      371  | `Training` | `트레이닝` |
+      372  | `Music Generation` | `음악 생성` |
+      373  
+       84 -#### 카드 제목 + 설명 추가                                    
+      374 +##### 카드 제목 + 설명 추가                                   
+      375  
+      376  | Step | 기존 제목 | 변경 제목 | 추가 설명 |
+      377  |------|-----------|-----------|-----------|
+     ...
+      381  | - | LoRA Settings | LoRA 설정 | 학습된 LoRA 어댑터를 로드하
+           여 음악 생성 스타일을 변경합니다. |
+      382  | - | Generation Settings | 생성 설정 | 생성할 음악의 장르, 분
+           위기, 가사, BPM 등을 설정합니다. |
+      383  
+       94 -#### 라벨/버튼/기타 텍스트                                    
+      384 +##### 라벨/버튼/기타 텍스트                                   
+      385  
+      386  | 영문 | 한국어 |
+      387  |------|--------|
+     ...
+      418  | Generate Music | 음악 생성 |
+      419  | Download | 다운로드 |
+      420  
+      131 -#### 토스트 메시지 한국어화                                   
+      421 +##### 토스트 메시지 한국어화                                  
+      422  
+      423  | 영문 | 한국어 |
+      424  |------|--------|
+     ...
+      433  | Music generated! | 음악이 생성되었습니다! |
+      434  | Enter a caption/description | 캡션/설명을 입력하세요 |
+      435  
+      146 -#### 가사 힌트                                                
+      436 +##### 가사 힌트                                               
+      437  
+      438  ```
+      439  [verse], [chorus], [bridge], [outro] 태그로 곡의 구조를 지정할
+            수 있습니다.
+      440  비워두면 인스트루멘탈로 생성됩니다.
+      441  ```
+      442  
+      153 -#### 시간 포맷                                                
+      443 +##### 시간 포맷                                               
+      444  
+      445  ```
+      446  기존: 5s / 2m 30s / 1h 15m
+     ...
+      449  
+      450  ---
+      451  
+      162 -### 2-2. 파일 업로드 UI (Step 1 변경)                         
+      452 +#### 2-2. 파일 업로드 UI (Step 1 변경)                        
+      453  
+      164 -#### 기존 구조                                                
+      454 +##### 기존 구조                                               
+      455  
+      456  ```
+      457  [디렉토리 경로 텍스트 입력] + [Scan 버튼]
+      458  ```
+      459  
+      170 -#### 변경 구조                                                
+      460 +##### 변경 구조                                               
+      461  
+      462  ```
+      463  ┌──────────────────────────────────────────────┐
+     ...
+      480  └──────────────────────────────────────────────┘
+      481  ```
+      482  
+      193 -#### HTML 요소                                                
+      483 +##### HTML 요소                                               
+      484  
+      485  - `<input type="file" multiple accept=".mp3,.wav,.flac,.ogg,.a
+           ac,.m4a,.wma,.opus">` (숨김)
+      486  - 드래그 앤 드롭 영역 (`.drop-zone`, dashed border, hover 효과
+           )
+     ...
+      488  - 선택된 파일 목록 (`#selectedFilesList`) — 파일명 + 크기
+      489  - 업로드 프로그레스 바 (`#uploadProgress`, `#uploadBar`, `#upl
+           oadPercent`)
+      490  
+      201 -#### CSS 추가                                                 
+      491 +##### CSS 추가                                                
+      492  
+      493  ```css
+      494  .drop-zone           /* 드래그 앤 드롭 영역 */
+     ...
+      504  .header .subtitle        /* 헤더 서브타이틀 */
+      505  ```
+      506  
+      217 -#### JavaScript 변경                                          
+      507 +##### JavaScript 변경                                         
+      508  
+      509  | 함수/속성 | 설명 |
+      510  |-----------|------|
+     ...
+      516  | `uploadAndScan()` | 업로드 → 스캔 자동 체인 |
+      517  | `formatFileSize(bytes)` | 파일 크기 포맷 (B/KB/MB) |
+      518  
+      229 -#### 업로드 & 스캔 흐름                                       
+      519 +##### 업로드 & 스캔 흐름                                      
+      520  
+      521  ```
+      522  1. 사용자가 파일 선택 (드래그 또는 클릭)
+     ...
+      535  6. 스캔 결과 표시 + [데이터셋 저장] 버튼 활성화
+      536  ```
+      537  
+      248 -#### 제거된 요소                                              
+      538 +##### 제거된 요소                                             
+      539  
+      540  - `#datasetDir` 텍스트 입력 (디렉토리 경로 직접 입력)
+      541  - `scanDataset()` 함수 (uploadAndScan()으로 대체)
+     ...
+      543  
+      544  ---
+      545  
+      256 -## 검증 체크리스트                                            
+      546 +### 검증 체크리스트                                           
+      547  
+      548  - [ ] 서버 재시작 후 `POST /v1/dataset/upload` 엔드포인트 동작
+            확인
+      549  - [ ] `index.html`에서 오디오 파일 드래그 앤 드롭 → 업로드 → 
+           스캔 동작 확인
+
+⏺ 파일을 업데이트했습니다. 상단에 추가된 내용:
+
+  실행 방법 3가지:
+  1. 서버 실행 — bash start_gradio_ui_macos.sh (권장) 또는 uv run acestep 
+  --backend mlx --enable-api 직접 실행, .env 설정 포함
+  2. 클라이언트 실행 — open index.html (정적 파일, file://로 열기), 사용 흐름
+  설명
+  3. Python 클라이언트 — gradio_client 기반 음악 생성/트레이닝/LoRA 코드 예시 +
+  curl REST API 호출 예시
+
+  알려진 이슈 6가지:
+  - MPS 트레이닝 NaN 그래디언트 (trainer.py 패치 + 텐서 NaN 치환)
+  - Gradio 보안 경로 제한 (파일 업로드로 자동 해결)
+  - 포트 충돌
+  - FFmpeg 미설치
+  - 무시 가능한 경고 목록
+  - ENABLE_API 미설정 시 연결 실패
+
+✻ Cogitated for 2m 35s

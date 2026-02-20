@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mixgrv - LoRA 트레이닝 & AI 음악 생성</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --card: #16213e;
+  --card-alt: #1a2744;
+  --accent: #0f3460;
+  --accent-light: #1a4a7a;
+  --primary: #e94560;
+  --primary-hover: #ff6b81;
+  --text: #e0e0e0;
+  --text-dim: #8892a0;
+  --text-bright: #ffffff;
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+  --border: #2a3a5c;
+  --input-bg: #0d1b30;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+.container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+/* Header */
+.header {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.header h1 {
+  font-size: 1.3em;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.header .subtitle {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.server-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.server-row input {
+  flex: 1;
+  min-width: 200px;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  display: inline-block;
+  transition: background 0.3s;
+}
+.status-dot.connected { background: var(--success); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--text-dim);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tab-btn.active {
+  background: var(--accent);
+  color: var(--text-bright);
+  border-bottom-color: var(--accent);
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+.card h3 {
+  font-size: 1em;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.card-desc {
+  font-size: 0.8em;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.step-badge {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-right: 6px;
+}
+
+/* Form elements */
+label {
+  display: block;
+  font-size: 0.85em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+label:first-child { margin-top: 0; }
+input[type="text"], textarea, select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.9em;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type="text"]:focus, textarea:focus, select:focus {
+  border-color: var(--primary);
+}
+textarea { resize: vertical; min-height: 80px; }
+select { cursor: pointer; }
+input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--primary);
+  vertical-align: middle;
+  margin-right: 6px;
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+/* Grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #fff;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary { background: var(--primary); }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-secondary { background: var(--accent-light); }
+.btn-secondary:hover:not(:disabled) { background: #1f5a9a; }
+.btn-danger { background: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: #c0392b; }
+.btn-small { padding: 6px 12px; font-size: 0.8em; }
+.btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* Progress */
+.progress-wrap {
+  background: var(--input-bg);
+  border-radius: 6px;
+  height: 24px;
+  overflow: hidden;
+  margin: 8px 0;
+  position: relative;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+  border-radius: 6px;
+  transition: width 0.5s ease;
+  min-width: 0;
+}
+.progress-text {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Stats row */
+.stats-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.stat {
+  background: var(--input-bg);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8em;
+}
+.stat b { color: var(--text-bright); }
+
+/* Log area */
+.log-area {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.75em;
+  color: var(--text-dim);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Loss chart */
+.chart-wrap {
+  background: var(--input-bg);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
+}
+.chart-wrap canvas { width: 100%; height: 200px; }
+
+/* Audio player */
+.audio-result {
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+.audio-result audio { width: 100%; margin-top: 6px; }
+
+/* File list */
+.file-list {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.8em;
+  color: var(--text-dim);
+  margin: 8px 0;
+}
+
+/* Inline row */
+.inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.inline-row > *:first-child { flex: 1; }
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: #fff;
+  box-shadow: var(--shadow);
+  animation: slideIn 0.3s ease;
+  max-width: 360px;
+}
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+.toast.info { background: var(--accent-light); }
+@keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+
+/* Lyrics hint */
+.lyrics-hint {
+  font-size: 0.75em;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* LoRA section in music gen */
+.lora-section {
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.lora-section h4 {
+  font-size: 0.9em;
+  color: var(--text-bright);
+  margin-bottom: 8px;
+}
+.lora-status {
+  font-size: 0.8em;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--input-bg);
+  display: inline-block;
+  margin-top: 6px;
+}
+
+/* Range value display */
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.range-row input[type="range"] { flex: 1; }
+.range-val {
+  min-width: 36px;
+  text-align: center;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hidden { display: none !important; }
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 10px;
+  background: var(--input-bg);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--primary);
+  background: rgba(233, 69, 96, 0.06);
+}
+.drop-zone-text {
+  font-size: 0.9em;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.drop-zone-text .browse-link {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+}
+.drop-zone-ext {
+  font-size: 0.75em;
+  color: var(--text-dim);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+.selected-files-summary {
+  font-size: 0.85em;
+  color: var(--text-bright);
+  margin-top: 10px;
+  font-weight: 600;
+}
+.selected-files-list {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 0.78em;
+  color: var(--text-dim);
+  margin-top: 6px;
+  line-height: 1.7;
+}
+.upload-progress-wrap {
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>mixgrv - LoRA 트레이닝 & AI 음악 생성</h1>
+    <div class="subtitle">ACE-Step 1.5 기반의 LoRA 학습과 AI 음악 생성을 위한 웹 인터페이스입니다.</div>
+    <div class="server-row">
+      <label style="margin:0; white-space:nowrap;">서버:</label>
+      <input type="text" id="serverUrl" value="http://127.0.0.1:7860" style="flex:1">
+      <button class="btn btn-secondary btn-small" onclick="checkConnection()">연결</button>
+      <span class="status-dot" id="statusDot"></span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('training')">트레이닝</button>
+    <button class="tab-btn" onclick="switchTab('generate')">음악 생성</button>
+  </div>
+
+  <!-- ==================== TRAINING TAB ==================== -->
+  <div class="tab-content active" id="tab-training">
+
+    <!-- Step 1: Dataset Preparation -->
+    <div class="card">
+      <h3><span class="step-badge">Step 1</span> 데이터셋 준비</h3>
+      <div class="card-desc">학습에 사용할 오디오 파일을 업로드하고 데이터셋을 구성합니다.</div>
+      <div class="form-grid">
+        <div>
+          <label>데이터셋 이름</label>
+          <input type="text" id="datasetName" placeholder="my_dataset">
+        </div>
+        <div>
+          <label>커스텀 태그</label>
+          <input type="text" id="customTag" placeholder="예: lo-fi, ambient">
+        </div>
+      </div>
+      <label style="margin-top:10px">
+        <input type="checkbox" id="isInstrumental"> 인스트루멘탈 전용 (보컬 없음)
+      </label>
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" multiple accept=".mp3,.wav,.flac,.ogg,.aac,.m4a,.wma,.opus" style="display:none">
+        <div class="drop-zone-text">
+          오디오 파일을 여기에 드래그하거나<br>
+          <span class="browse-link" id="browseLink">파일 선택</span>을 클릭하세요
+        </div>
+        <div class="drop-zone-ext">mp3, wav, flac, ogg, aac, m4a, wma, opus</div>
+      </div>
+      <div id="selectedFilesSummary" class="selected-files-summary hidden"></div>
+      <div id="selectedFilesList" class="selected-files-list hidden"></div>
+
+      <!-- Upload progress -->
+      <div id="uploadProgress" class="upload-progress-wrap hidden">
+        <div class="progress-wrap">
+          <div class="progress-bar" id="uploadBar" style="width:0%"></div>
+          <div class="progress-text" id="uploadPercent">업로드 중...</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnUploadScan" onclick="uploadAndScan()" disabled>업로드 & 스캔</button>
+        <button class="btn btn-secondary" id="btnSaveDataset" onclick="saveDataset()" disabled>데이터셋 저장</button>
+      </div>
+      <div class="file-list hidden" id="scanResult"></div>
+    </div>
+
+    <!-- Step 2: Preprocess -->
+    <div class="card">
+      <h3><span class="step-badge">Step 2</span> 전처리</h3>
+      <div class="card-desc">오디오 파일을 모델 학습에 적합한 텐서 형태로 변환합니다.</div>
+      <label>출력 디렉토리</label>
+      <input type="text" id="preprocessOutDir" value="./datasets/preprocessed_tensors">
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnPreprocess" onclick="startPreprocess()">전처리 시작</button>
+      </div>
+      <div id="preprocessProgress" class="hidden">
+        <div class="progress-wrap">
+          <div class="progress-bar" id="preprocessBar" style="width:0%"></div>
+          <div class="progress-text" id="preprocessPercent">0%</div>
+        </div>
+        <div class="stats-row">
+          <div class="stat" id="preprocessFile">상태: -</div>
+          <div class="stat" id="preprocessElapsed">경과: 0초</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Training -->
+    <div class="card">
+      <h3><span class="step-badge">Step 3</span> 트레이닝</h3>
+      <div class="card-desc">전처리된 데이터로 LoRA 모델을 학습합니다.</div>
+      <div class="inline-row">
+        <div>
+          <label>텐서 디렉토리</label>
+          <input type="text" id="tensorDir" placeholder="./datasets/preprocessed_tensors">
+        </div>
+        <button class="btn btn-secondary btn-small" onclick="loadTensorInfo()" style="margin-bottom:1px">불러오기</button>
+      </div>
+      <div id="tensorInfo" class="hidden" style="margin-top:6px">
+        <div class="stat" id="tensorInfoText">-</div>
+      </div>
+
+      <div class="form-grid" style="margin-top:10px">
+        <div>
+          <label>에포크 수</label>
+          <select id="trainEpochs">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+            <option value="800">800</option>
+          </select>
+        </div>
+        <div>
+          <label>LoRA 랭크</label>
+          <select id="trainRank">
+            <option value="16">16</option>
+            <option value="32">32</option>
+            <option value="64" selected>64</option>
+            <option value="128">128</option>
+          </select>
+        </div>
+        <div>
+          <label>LoRA 알파</label>
+          <select id="trainAlpha">
+            <option value="auto">rank x 2 (자동)</option>
+            <option value="64">64</option>
+            <option value="128" selected>128</option>
+            <option value="256">256</option>
+          </select>
+        </div>
+        <div>
+          <label>학습률</label>
+          <select id="trainLR">
+            <option value="0.0001">1e-4</option>
+            <option value="0.0003" selected>3e-4</option>
+            <option value="0.0005">5e-4</option>
+            <option value="0.001">1e-3</option>
+          </select>
+        </div>
+        <div>
+          <label>배치 크기</label>
+          <select id="trainBatch">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+        <div>
+          <label>드롭아웃</label>
+          <select id="trainDropout">
+            <option value="0">0.0</option>
+            <option value="0.05">0.05</option>
+            <option value="0.1" selected>0.1</option>
+            <option value="0.2">0.2</option>
+          </select>
+        </div>
+        <div>
+          <label>체크포인트 간격 (에포크)</label>
+          <select id="trainCheckpoint">
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div>
+          <label>출력 디렉토리</label>
+          <input type="text" id="trainOutputDir" value="./lora_output">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnStartTrain" onclick="startTraining()">트레이닝 시작</button>
+        <button class="btn btn-danger" id="btnStopTrain" onclick="stopTraining()" disabled>트레이닝 중지</button>
+      </div>
+
+      <!-- Training progress -->
+      <div id="trainingProgress" class="hidden">
+        <div class="progress-wrap" style="margin-top:12px">
+          <div class="progress-bar" id="trainBar" style="width:0%"></div>
+          <div class="progress-text" id="trainPercent">0%</div>
+        </div>
+        <div class="stats-row">
+          <div class="stat">에포크: <b id="trainEpochCur">0</b> / <b id="trainEpochTotal">0</b></div>
+          <div class="stat">손실: <b id="trainLossCur">-</b></div>
+          <div class="stat">경과: <b id="trainElapsed">-</b></div>
+          <div class="stat">남은 시간: <b id="trainRemaining">-</b></div>
+          <div class="stat">상태: <b id="trainStatus">대기</b></div>
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="lossChart" height="200"></canvas>
+        </div>
+
+        <label>트레이닝 로그</label>
+        <div class="log-area" id="trainLog">트레이닝 시작 대기 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MUSIC GENERATION TAB ==================== -->
+  <div class="tab-content" id="tab-generate">
+
+    <!-- LoRA Settings -->
+    <div class="card">
+      <h3>LoRA 설정</h3>
+      <div class="card-desc">학습된 LoRA 어댑터를 로드하여 음악 생성 스타일을 변경합니다.</div>
+      <div class="lora-section">
+        <div class="inline-row">
+          <div>
+            <label>LoRA 경로</label>
+            <input type="text" id="loraPath" placeholder="/path/to/lora/adapter">
+          </div>
+          <button class="btn btn-primary btn-small" onclick="loadLora()">로드</button>
+          <button class="btn btn-danger btn-small" onclick="unloadLora()">해제</button>
+        </div>
+        <label style="margin-top:10px">
+          <input type="checkbox" id="loraEnabled" onchange="toggleLora()"> LoRA 활성화
+        </label>
+        <label>강도</label>
+        <div class="range-row">
+          <input type="range" id="loraScale" min="0" max="1" step="0.05" value="1.0" oninput="updateLoraScaleLabel()" onchange="setLoraScale()">
+          <span class="range-val" id="loraScaleVal">1.00</span>
+        </div>
+        <div class="lora-status" id="loraStatusText">LoRA: 로드되지 않음</div>
+      </div>
+    </div>
+
+    <!-- Generation Settings -->
+    <div class="card">
+      <h3>생성 설정</h3>
+      <div class="card-desc">생성할 음악의 장르, 분위기, 가사, BPM 등을 설정합니다.</div>
+      <label>캡션 / 설명</label>
+      <textarea id="genCaption" placeholder="예: 부드러운 피아노와 앰비언트 텍스처의 몽환적인 로파이 비트" rows="2"></textarea>
+      <label>가사</label>
+      <textarea id="genLyrics" placeholder="[verse]&#10;가사를 입력하세요...&#10;&#10;[chorus]&#10;후렴구를 입력하세요..." rows="4"></textarea>
+      <div class="lyrics-hint">[verse], [chorus], [bridge], [outro] 태그로 곡의 구조를 지정할 수 있습니다. 비워두면 인스트루멘탈로 생성됩니다.</div>
+
+      <div class="form-grid">
+        <div>
+          <label>BPM</label>
+          <select id="genBPM">
+            <option value="">자동</option>
+            <option value="60">60</option>
+            <option value="80">80</option>
+            <option value="100">100</option>
+            <option value="120" selected>120</option>
+            <option value="140">140</option>
+            <option value="160">160</option>
+          </select>
+        </div>
+        <div>
+          <label>키</label>
+          <select id="genKey">
+            <option value="">자동</option>
+            <option value="C major">C major</option><option value="C minor">C minor</option>
+            <option value="D major">D major</option><option value="D minor">D minor</option>
+            <option value="E major">E major</option><option value="E minor">E minor</option>
+            <option value="F major">F major</option><option value="F minor">F minor</option>
+            <option value="G major">G major</option><option value="G minor">G minor</option>
+            <option value="A major">A major</option><option value="A minor">A minor</option>
+            <option value="B major">B major</option><option value="B minor">B minor</option>
+          </select>
+        </div>
+        <div>
+          <label>박자</label>
+          <select id="genTimeSig">
+            <option value="">자동</option>
+            <option value="3/4">3/4</option>
+            <option value="4/4" selected>4/4</option>
+            <option value="6/8">6/8</option>
+          </select>
+        </div>
+        <div>
+          <label>재생 시간 (초)</label>
+          <select id="genDuration">
+            <option value="15">15초</option>
+            <option value="30" selected>30초</option>
+            <option value="60">60초</option>
+            <option value="120">120초</option>
+            <option value="240">240초</option>
+          </select>
+        </div>
+        <div>
+          <label>언어</label>
+          <select id="genLanguage">
+            <option value="ko">한국어</option>
+            <option value="en" selected>영어</option>
+            <option value="ja">일본어</option>
+            <option value="zh">중국어</option>
+            <option value="instrumental">인스트루멘탈</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnGenerate" onclick="generateMusic()">음악 생성</button>
+      </div>
+
+      <!-- Generation progress -->
+      <div id="genProgress" class="hidden">
+        <div class="progress-wrap" style="margin-top:12px">
+          <div class="progress-bar" id="genBar" style="width:0%"></div>
+          <div class="progress-text" id="genPercent">생성 중...</div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div id="genResult" class="hidden">
+        <div class="audio-result" id="audioResults"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// =============================================================================
+// Configuration & State
+// =============================================================================
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const State = {
+  baseUrl: localStorage.getItem('mixgrv_serverUrl') || 'http://127.0.0.1:7860',
+  connected: false,
+  scanData: null,
+  uploadedDir: null,
+  selectedFiles: [],
+  preprocessTaskId: null,
+  preprocessPollTimer: null,
+  trainingPollTimer: null,
+  genTaskId: null,
+  genPollTimer: null,
+  preprocessStartTime: null,
+};
+
+// Restore saved values on load
+window.addEventListener('DOMContentLoaded', () => {
+  $('#serverUrl').value = State.baseUrl;
+  _restoreInputs();
+  _initDropZone();
+  checkConnection();
+});
+
+// =============================================================================
+// API Layer
+// =============================================================================
+async function GET(path) {
+  const resp = await fetch(State.baseUrl + path, { mode: 'cors' });
+  if (!resp.ok) {
+    const err = await resp.text().catch(() => resp.statusText);
+    throw new Error(err);
+  }
+  return resp.json();
+}
+
+async function POST(path, body = {}) {
+  const resp = await fetch(State.baseUrl + path, {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(err.detail || JSON.stringify(err));
+  }
+  return resp.json();
+}
+
+const API = {
+  health:            ()  => GET('/health'),
+  // Dataset
+  scanDataset:       (p) => POST('/v1/dataset/scan', p),
+  saveDataset:       (p) => POST('/v1/dataset/save', p),
+  preprocessAsync:   (p) => POST('/v1/dataset/preprocess_async', p),
+  preprocessStatus:  (id)=> GET(`/v1/dataset/preprocess_status/${id}`),
+  // Training
+  loadTensorInfo:    (p) => POST('/v1/training/load_tensor_info', p),
+  startTraining:     (p) => POST('/v1/training/start', p),
+  trainingStatus:    ()  => GET('/v1/training/status'),
+  stopTraining:      ()  => POST('/v1/training/stop'),
+  // LoRA
+  loadLora:          (p) => POST('/v1/lora/load', p),
+  unloadLora:        ()  => POST('/v1/lora/unload'),
+  toggleLora:        (p) => POST('/v1/lora/toggle', p),
+  setLoraScale:      (p) => POST('/v1/lora/scale', p),
+  loraStatus:        ()  => GET('/v1/lora/status'),
+  // Music generation
+  releaseTask:       (p) => POST('/release_task', p),
+  queryResult:       (p) => POST('/query_result', p),
+  // Upload (uses FormData, no Content-Type header)
+  uploadDataset: (formData) => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', State.baseUrl + '/v1/dataset/upload');
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.detail || xhr.statusText));
+          } catch {
+            reject(new Error(xhr.statusText));
+          }
+        }
+      };
+      xhr.onerror = () => reject(new Error('네트워크 오류'));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          $('#uploadBar').style.width = pct + '%';
+          $('#uploadPercent').textContent = `업로드 중... ${pct}%`;
+        }
+      };
+      xhr.send(formData);
+    });
+  },
+};
+
+// =============================================================================
+// Utility
+// =============================================================================
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  $('#toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function formatTime(seconds) {
+  if (!seconds || seconds < 0) return '-';
+  const s = Math.floor(seconds);
+  if (s < 60) return `${s}초`;
+  if (s < 3600) return `${Math.floor(s/60)}분 ${s%60}초`;
+  return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}분`;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function _saveInputs() {
+  const keys = [
+    'serverUrl','datasetName','customTag','preprocessOutDir',
+    'tensorDir','trainOutputDir','loraPath','genCaption','genLyrics',
+  ];
+  const data = {};
+  keys.forEach(k => { const el = $(`#${k}`); if (el) data[k] = el.value; });
+  localStorage.setItem('mixgrv_inputs', JSON.stringify(data));
+  localStorage.setItem('mixgrv_serverUrl', State.baseUrl);
+}
+
+function _restoreInputs() {
+  try {
+    const data = JSON.parse(localStorage.getItem('mixgrv_inputs') || '{}');
+    Object.entries(data).forEach(([k, v]) => {
+      const el = $(`#${k}`);
+      if (el && v) el.value = v;
+    });
+  } catch {}
+}
+
+// =============================================================================
+// Tabs
+// =============================================================================
+function switchTab(name) {
+  $$('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === (name === 'training' ? 0 : 1));
+  });
+  $$('.tab-content').forEach(tc => tc.classList.remove('active'));
+  $(`#tab-${name}`).classList.add('active');
+}
+
+// =============================================================================
+// Connection
+// =============================================================================
+async function checkConnection() {
+  State.baseUrl = $('#serverUrl').value.replace(/\/+$/, '');
+  _saveInputs();
+  try {
+    const resp = await API.health();
+    State.connected = true;
+    $('#statusDot').classList.add('connected');
+    toast('서버에 연결되었습니다', 'success');
+    // Also try to fetch LoRA status
+    try {
+      const lr = await API.loraStatus();
+      _updateLoraStatusUI(lr.data || lr);
+    } catch {}
+  } catch (e) {
+    State.connected = false;
+    $('#statusDot').classList.remove('connected');
+    toast(`연결 실패: ${e.message}`, 'error');
+  }
+}
+
+// =============================================================================
+// Step 1: File Upload + Dataset Scan
+// =============================================================================
+function _initDropZone() {
+  const dropZone = $('#dropZone');
+  const fileInput = $('#fileInput');
+  const browseLink = $('#browseLink');
+
+  browseLink.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    _handleFiles(Array.from(fileInput.files));
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files);
+    _handleFiles(files);
+  });
+}
+
+function _handleFiles(files) {
+  const AUDIO_EXT = ['.mp3','.wav','.flac','.ogg','.aac','.m4a','.wma','.opus'];
+  const audioFiles = files.filter(f => {
+    const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+    return AUDIO_EXT.includes(ext);
+  });
+
+  if (audioFiles.length === 0) {
+    toast('지원되는 오디오 파일이 없습니다', 'error');
+    return;
+  }
+
+  State.selectedFiles = audioFiles;
+  const totalSize = audioFiles.reduce((sum, f) => sum + f.size, 0);
+
+  $('#selectedFilesSummary').classList.remove('hidden');
+  $('#selectedFilesSummary').textContent = `선택된 파일: ${audioFiles.length}개 (총 ${formatFileSize(totalSize)})`;
+
+  const listEl = $('#selectedFilesList');
+  listEl.classList.remove('hidden');
+  listEl.innerHTML = audioFiles.map(f => `${f.name} (${formatFileSize(f.size)})`).join('\n');
+
+  $('#btnUploadScan').disabled = false;
+
+  if (files.length > audioFiles.length) {
+    const skipped = files.length - audioFiles.length;
+    toast(`${skipped}개 파일이 지원되지 않는 형식으로 제외되었습니다`, 'info');
+  }
+}
+
+async function uploadAndScan() {
+  _saveInputs();
+  const name = $('#datasetName').value.trim();
+  if (!name) return toast('데이터셋 이름을 입력하세요', 'error');
+  if (State.selectedFiles.length === 0) return toast('업로드할 파일을 선택하세요', 'error');
+
+  const formData = new FormData();
+  formData.append('dataset_name', name);
+  State.selectedFiles.forEach(f => formData.append('files', f));
+
+  $('#btnUploadScan').disabled = true;
+  $('#uploadProgress').classList.remove('hidden');
+  $('#uploadBar').style.width = '0%';
+  $('#uploadPercent').textContent = '업로드 중...';
+
+  try {
+    // 1) Upload files
+    const uploadResp = await API.uploadDataset(formData);
+    const uploadData = uploadResp.data || uploadResp;
+    State.uploadedDir = uploadData.upload_dir;
+
+    toast(`${uploadData.count}개 파일이 업로드되었습니다`, 'success');
+    if (uploadData.skipped_files && uploadData.skipped_files.length > 0) {
+      toast(`${uploadData.skipped_files.length}개 파일이 건너뛰어졌습니다`, 'info');
+    }
+
+    // 2) Auto-scan uploaded directory
+    $('#uploadPercent').textContent = '스캔 중...';
+    const scanResp = await API.scanDataset({
+      audio_dir: uploadData.upload_dir,
+      dataset_name: name,
+      custom_tag: $('#customTag').value.trim(),
+      is_instrumental: $('#isInstrumental').checked,
+    });
+    const scanData = scanResp.data || scanResp;
+    State.scanData = scanData;
+
+    const resultEl = $('#scanResult');
+    resultEl.classList.remove('hidden');
+
+    const samples = scanData.samples || [];
+    if (samples.length > 0) {
+      resultEl.innerHTML = `<b>${samples.length}개 파일 발견:</b>\n` +
+        samples.map(s => typeof s === 'string' ? s : (s.file_name || s.audio_path || JSON.stringify(s))).join('\n');
+    } else {
+      resultEl.innerHTML = scanData.message || `스캔 완료. ${scanData.total_files || 0}개 파일 발견.`;
+    }
+
+    $('#btnSaveDataset').disabled = false;
+    $('#uploadBar').style.width = '100%';
+    $('#uploadPercent').textContent = '완료!';
+    toast('업로드 및 스캔이 완료되었습니다', 'success');
+
+    setTimeout(() => { $('#uploadProgress').classList.add('hidden'); }, 2000);
+  } catch (e) {
+    toast(`업로드 실패: ${e.message}`, 'error');
+    $('#uploadProgress').classList.add('hidden');
+  } finally {
+    $('#btnUploadScan').disabled = false;
+  }
+}
+
+async function saveDataset() {
+  if (!State.scanData) return toast('먼저 파일을 업로드하고 스캔하세요', 'error');
+  try {
+    const resp = await API.saveDataset({
+      dataset_name: $('#datasetName').value.trim(),
+      audio_dir: State.uploadedDir || '',
+      custom_tag: $('#customTag').value.trim(),
+      is_instrumental: $('#isInstrumental').checked,
+      samples: State.scanData.samples || [],
+    });
+    toast('데이터셋이 저장되었습니다', 'success');
+  } catch (e) {
+    toast(`저장 실패: ${e.message}`, 'error');
+  }
+}
+
+// =============================================================================
+// Step 2: Preprocess
+// =============================================================================
+async function startPreprocess() {
+  _saveInputs();
+  const outDir = $('#preprocessOutDir').value.trim();
+  if (!outDir) return toast('출력 디렉토리를 입력하세요', 'error');
+
+  $('#btnPreprocess').disabled = true;
+  $('#preprocessProgress').classList.remove('hidden');
+  State.preprocessStartTime = Date.now();
+
+  try {
+    const resp = await API.preprocessAsync({
+      dataset_name: $('#datasetName').value.trim(),
+      audio_dir: State.uploadedDir || '',
+      output_dir: outDir,
+    });
+    const data = resp.data || resp;
+    State.preprocessTaskId = data.task_id;
+    toast('전처리가 시작되었습니다', 'info');
+    _pollPreprocess();
+  } catch (e) {
+    $('#btnPreprocess').disabled = false;
+    toast(`전처리 실패: ${e.message}`, 'error');
+  }
+}
+
+function _pollPreprocess() {
+  if (State.preprocessPollTimer) clearInterval(State.preprocessPollTimer);
+  State.preprocessPollTimer = setInterval(async () => {
+    try {
+      const resp = await API.preprocessStatus(State.preprocessTaskId);
+      const data = resp.data || resp;
+      const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+
+      $('#preprocessBar').style.width = pct + '%';
+      $('#preprocessPercent').textContent = `${pct}% (${data.current}/${data.total})`;
+
+      const elapsed = (Date.now() - State.preprocessStartTime) / 1000;
+      $('#preprocessElapsed').textContent = `경과: ${formatTime(elapsed)}`;
+      $('#preprocessFile').textContent = `상태: ${data.progress || data.status || '-'}`;
+
+      if (data.status === 'completed' || data.status === 'done') {
+        clearInterval(State.preprocessPollTimer);
+        $('#btnPreprocess').disabled = false;
+        $('#preprocessBar').style.width = '100%';
+        $('#preprocessPercent').textContent = '100% 완료';
+        toast('전처리가 완료되었습니다!', 'success');
+
+        // Auto-fill tensor dir
+        if (data.result && data.result.output_dir) {
+          $('#tensorDir').value = data.result.output_dir;
+        }
+      } else if (data.status === 'error' || data.status === 'failed') {
+        clearInterval(State.preprocessPollTimer);
+        $('#btnPreprocess').disabled = false;
+        toast(`전처리 오류: ${data.error || '알 수 없는 오류'}`, 'error');
+      }
+    } catch (e) {
+      clearInterval(State.preprocessPollTimer);
+      $('#btnPreprocess').disabled = false;
+      toast(`폴링 오류: ${e.message}`, 'error');
+    }
+  }, 2000);
+}
+
+// =============================================================================
+// Step 3: Training
+// =============================================================================
+async function loadTensorInfo() {
+  const dir = $('#tensorDir').value.trim();
+  if (!dir) return toast('텐서 디렉토리를 입력하세요', 'error');
+  try {
+    const resp = await API.loadTensorInfo({ tensor_dir: dir });
+    const data = resp.data || resp;
+    $('#tensorInfo').classList.remove('hidden');
+    $('#tensorInfoText').innerHTML = data.message || `로드 완료: ${data.num_samples}개 샘플`;
+    toast('텐서 정보를 불러왔습니다', 'success');
+  } catch (e) {
+    toast(`불러오기 실패: ${e.message}`, 'error');
+  }
+}
+
+async function startTraining() {
+  _saveInputs();
+  const tensorDir = $('#tensorDir').value.trim();
+  if (!tensorDir) return toast('텐서 디렉토리를 입력하고 텐서 정보를 먼저 불러오세요', 'error');
+
+  const rank = parseInt($('#trainRank').value);
+  let alpha = $('#trainAlpha').value;
+  alpha = alpha === 'auto' ? rank * 2 : parseInt(alpha);
+
+  const params = {
+    tensor_dir: tensorDir,
+    train_epochs: parseInt($('#trainEpochs').value),
+    lora_rank: rank,
+    lora_alpha: alpha,
+    learning_rate: parseFloat($('#trainLR').value),
+    train_batch_size: parseInt($('#trainBatch').value),
+    lora_dropout: parseFloat($('#trainDropout').value),
+    save_every_n_epochs: parseInt($('#trainCheckpoint').value),
+    lora_output_dir: $('#trainOutputDir').value.trim(),
+  };
+
+  $('#btnStartTrain').disabled = true;
+  $('#btnStopTrain').disabled = false;
+  $('#trainingProgress').classList.remove('hidden');
+  $('#trainEpochTotal').textContent = params.train_epochs;
+
+  try {
+    await API.startTraining(params);
+    toast('트레이닝이 시작되었습니다', 'info');
+    _pollTraining();
+  } catch (e) {
+    $('#btnStartTrain').disabled = false;
+    $('#btnStopTrain').disabled = true;
+    toast(`트레이닝 실패: ${e.message}`, 'error');
+  }
+}
+
+async function stopTraining() {
+  try {
+    await API.stopTraining();
+    toast('트레이닝을 중지하고 있습니다...', 'info');
+  } catch (e) {
+    toast(`중지 실패: ${e.message}`, 'error');
+  }
+}
+
+function _pollTraining() {
+  if (State.trainingPollTimer) clearInterval(State.trainingPollTimer);
+  State.trainingPollTimer = setInterval(async () => {
+    try {
+      const resp = await API.trainingStatus();
+      const ts = resp.data || resp;
+
+      const epochs = (ts.config && ts.config.epochs) || parseInt($('#trainEpochs').value) || 1;
+      const curEpoch = ts.current_epoch || 0;
+      const pct = Math.round((curEpoch / epochs) * 100);
+
+      $('#trainBar').style.width = pct + '%';
+      $('#trainPercent').textContent = `${pct}%`;
+      $('#trainEpochCur').textContent = curEpoch;
+      $('#trainEpochTotal').textContent = epochs;
+      $('#trainLossCur').textContent = ts.current_loss != null ? parseFloat(ts.current_loss).toFixed(4) : '-';
+      $('#trainStatus').textContent = ts.status || '알 수 없음';
+
+      if (ts.start_time) {
+        const elapsed = (Date.now() / 1000) - ts.start_time;
+        $('#trainElapsed').textContent = formatTime(elapsed);
+      }
+      if (ts.estimated_time_remaining > 0) {
+        $('#trainRemaining').textContent = formatTime(ts.estimated_time_remaining);
+      }
+
+      // Update log
+      if (ts.training_log) {
+        const logEl = $('#trainLog');
+        logEl.textContent = ts.training_log;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      // Draw loss chart
+      if (ts.loss_history && ts.loss_history.length > 0) {
+        _drawLossChart(ts.loss_history);
+      }
+
+      // Check if training ended
+      if (!ts.is_training && curEpoch > 0) {
+        clearInterval(State.trainingPollTimer);
+        $('#btnStartTrain').disabled = false;
+        $('#btnStopTrain').disabled = true;
+        if (ts.error) {
+          toast(`트레이닝 오류: ${ts.error}`, 'error');
+        } else {
+          $('#trainBar').style.width = '100%';
+          $('#trainPercent').textContent = '100% 완료';
+          toast('트레이닝이 완료되었습니다!', 'success');
+        }
+      }
+    } catch (e) {
+      // Don't kill polling on transient errors
+      console.error('Training poll error:', e);
+    }
+  }, 2000);
+}
+
+// =============================================================================
+// Loss Chart (Canvas)
+// =============================================================================
+function _drawLossChart(lossHistory) {
+  const canvas = $('#lossChart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 200 * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '200px';
+  ctx.scale(dpr, dpr);
+
+  const W = rect.width;
+  const H = 200;
+  const pad = { top: 20, right: 16, bottom: 30, left: 50 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Extract values (handle both number[] and {loss: number}[])
+  const values = lossHistory.map(v => typeof v === 'number' ? v : (v.loss || v.value || 0));
+  if (values.length === 0) return;
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const range = maxV - minV || 1;
+
+  // Grid
+  ctx.strokeStyle = '#2a3a5c';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+  }
+
+  // Y-axis labels
+  ctx.fillStyle = '#8892a0';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = maxV - (range / 4) * i;
+    const y = pad.top + (plotH / 4) * i;
+    ctx.fillText(val.toFixed(3), pad.left - 6, y + 3);
+  }
+
+  // X-axis label
+  ctx.textAlign = 'center';
+  ctx.fillText('에포크', W / 2, H - 4);
+
+  // Line
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = pad.left + (i / Math.max(values.length - 1, 1)) * plotW;
+    const y = pad.top + (1 - (v - minV) / range) * plotH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Current value label
+  const lastVal = values[values.length - 1];
+  ctx.fillStyle = '#e94560';
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`손실: ${lastVal.toFixed(4)}`, W - pad.right, pad.top - 6);
+}
+
+// =============================================================================
+// LoRA Management
+// =============================================================================
+async function loadLora() {
+  _saveInputs();
+  const path = $('#loraPath').value.trim();
+  if (!path) return toast('LoRA 경로를 입력하세요', 'error');
+  try {
+    const resp = await API.loadLora({ lora_path: path });
+    const data = resp.data || resp;
+    toast(data.message || 'LoRA가 로드되었습니다', 'success');
+    $('#loraEnabled').checked = true;
+    _refreshLoraStatus();
+  } catch (e) {
+    toast(`LoRA 로드 실패: ${e.message}`, 'error');
+  }
+}
+
+async function unloadLora() {
+  try {
+    const resp = await API.unloadLora();
+    const data = resp.data || resp;
+    toast(data.message || 'LoRA가 해제되었습니다', 'success');
+    $('#loraEnabled').checked = false;
+    _refreshLoraStatus();
+  } catch (e) {
+    toast(`해제 실패: ${e.message}`, 'error');
+  }
+}
+
+async function toggleLora() {
+  try {
+    const use = $('#loraEnabled').checked;
+    await API.toggleLora({ use_lora: use });
+    toast(use ? 'LoRA 활성화됨' : 'LoRA 비활성화됨', 'info');
+  } catch (e) {
+    toast(`전환 실패: ${e.message}`, 'error');
+  }
+}
+
+function updateLoraScaleLabel() {
+  $('#loraScaleVal').textContent = parseFloat($('#loraScale').value).toFixed(2);
+}
+
+async function setLoraScale() {
+  try {
+    const scale = parseFloat($('#loraScale').value);
+    await API.setLoraScale({ scale });
+  } catch (e) {
+    toast(`강도 설정 실패: ${e.message}`, 'error');
+  }
+}
+
+async function _refreshLoraStatus() {
+  try {
+    const resp = await API.loraStatus();
+    _updateLoraStatusUI(resp.data || resp);
+  } catch {}
+}
+
+function _updateLoraStatusUI(data) {
+  const loaded = data.lora_loaded || data.loaded;
+  const active = data.use_lora || data.active;
+  const scale = data.lora_scale || data.scale || 1.0;
+  const adapter = data.active_adapter || '-';
+
+  $('#loraEnabled').checked = !!active;
+  $('#loraScale').value = scale;
+  $('#loraScaleVal').textContent = parseFloat(scale).toFixed(2);
+
+  if (loaded) {
+    $('#loraStatusText').innerHTML = `LoRA: <b style="color:var(--success)">로드됨</b> | ` +
+      `활성: ${active ? '예' : '아니오'} | 강도: ${parseFloat(scale).toFixed(2)} | 어댑터: ${adapter}`;
+  } else {
+    $('#loraStatusText').textContent = 'LoRA: 로드되지 않음';
+  }
+}
+
+// =============================================================================
+// Music Generation
+// =============================================================================
+async function generateMusic() {
+  _saveInputs();
+  const caption = $('#genCaption').value.trim();
+  if (!caption) return toast('캡션/설명을 입력하세요', 'error');
+
+  const duration = parseInt($('#genDuration').value);
+  const language = $('#genLanguage').value;
+  const lyrics = language === 'instrumental' ? '' : $('#genLyrics').value.trim();
+
+  const params = {
+    prompt: caption,
+    lyrics: lyrics,
+    bpm: $('#genBPM').value ? parseInt($('#genBPM').value) : null,
+    key_scale: $('#genKey').value,
+    time_signature: $('#genTimeSig').value,
+    audio_duration: duration,
+    vocal_language: language === 'instrumental' ? 'en' : language,
+    batch_size: 1,
+    use_random_seed: true,
+  };
+
+  $('#btnGenerate').disabled = true;
+  $('#genProgress').classList.remove('hidden');
+  $('#genResult').classList.add('hidden');
+
+  try {
+    const resp = await API.releaseTask(params);
+    const data = resp.data || resp;
+    State.genTaskId = data.task_id;
+    toast('음악 생성이 시작되었습니다', 'info');
+    _pollGeneration();
+  } catch (e) {
+    $('#btnGenerate').disabled = false;
+    $('#genProgress').classList.add('hidden');
+    toast(`음악 생성 실패: ${e.message}`, 'error');
+  }
+}
+
+function _pollGeneration() {
+  if (State.genPollTimer) clearInterval(State.genPollTimer);
+  let elapsed = 0;
+
+  State.genPollTimer = setInterval(async () => {
+    elapsed += 1.5;
+    try {
+      const resp = await API.queryResult({ task_id_list: [State.genTaskId] });
+      const results = resp.data || resp;
+
+      // Progress animation
+      const fakePct = Math.min(95, Math.round(elapsed * 2));
+      $('#genBar').style.width = fakePct + '%';
+      $('#genPercent').textContent = `생성 중... ${formatTime(elapsed)}`;
+
+      if (Array.isArray(results) && results.length > 0 && results[0].status === 1) {
+        clearInterval(State.genPollTimer);
+        $('#genBar').style.width = '100%';
+        $('#genPercent').textContent = '완료!';
+        $('#btnGenerate').disabled = false;
+
+        // Parse result
+        let audioItems;
+        try {
+          audioItems = JSON.parse(results[0].result);
+        } catch {
+          audioItems = results[0].result;
+        }
+
+        if (Array.isArray(audioItems) && audioItems.length > 0) {
+          _showAudioResults(audioItems);
+          toast('음악이 생성되었습니다!', 'success');
+        } else {
+          toast('생성은 완료되었으나 오디오가 반환되지 않았습니다', 'warning');
+        }
+
+        setTimeout(() => { $('#genProgress').classList.add('hidden'); }, 2000);
+      }
+    } catch (e) {
+      console.error('Gen poll error:', e);
+    }
+  }, 1500);
+}
+
+function _showAudioResults(items) {
+  const container = $('#audioResults');
+  container.innerHTML = '';
+  $('#genResult').classList.remove('hidden');
+
+  items.forEach((item, idx) => {
+    const url = item.url ? State.baseUrl + item.url : '';
+    const div = document.createElement('div');
+    div.style.marginBottom = '12px';
+
+    let metaHtml = '';
+    if (item.caption) metaHtml += `<div style="font-size:0.8em;color:var(--text-dim)">캡션: ${_esc(item.caption)}</div>`;
+    if (item.bpm) metaHtml += `<span class="stat" style="margin-right:6px">BPM: ${item.bpm}</span>`;
+    if (item.keyscale) metaHtml += `<span class="stat" style="margin-right:6px">키: ${item.keyscale}</span>`;
+    if (item.duration) metaHtml += `<span class="stat" style="margin-right:6px">재생 시간: ${item.duration}초</span>`;
+    if (item.seed != null) metaHtml += `<span class="stat">시드: ${item.seed}</span>`;
+
+    div.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px;color:var(--text-bright)">트랙 ${idx + 1}</div>
+      ${metaHtml}
+      <audio controls preload="auto" style="width:100%;margin-top:6px">
+        <source src="${_esc(url)}" type="audio/flac">
+        <source src="${_esc(url)}" type="audio/mpeg">
+      </audio>
+      <a href="${_esc(url)}" download class="btn btn-secondary btn-small" style="margin-top:6px;text-decoration:none;display:inline-flex">다운로드</a>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function _esc(s) {
+  const el = document.createElement('span');
+  el.textContent = s || '';
+  return el.innerHTML;
+}
+
+// =============================================================================
+// Init
+// =============================================================================
+</script>
+</body>
+</html>
