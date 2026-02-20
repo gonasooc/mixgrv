@@ -62,6 +62,9 @@ _load_env_file() {
             ACESTEP_BATCH_SIZE)
                 [[ -n "$value" ]] && BATCH_SIZE="--batch_size $value"
                 ;;
+            ENABLE_API)
+                [[ -n "$value" ]] && ENABLE_API="$value"
+                ;;
         esac
     done < "$env_file"
     

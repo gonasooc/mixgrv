@@ -6,12 +6,14 @@ import json
 import os
 import random
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request, Depends, Header
+from fastapi import APIRouter, HTTPException, Request, Depends, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 # Global results directory inside project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -615,4 +617,186 @@ def setup_api_routes(demo, dit_handler, llm_handler, api_key: Optional[str] = No
     app.state.dit_handler = dit_handler
     app.state.llm_handler = llm_handler
     app.include_router(router)
+
+    # Extended training + LoRA REST endpoints
+    _register_extended_endpoints(app, dit_handler, llm_handler)
+
+
+# =============================================================================
+# Extended endpoints: Training + LoRA management
+# =============================================================================
+
+class _LoadLoRARequest(BaseModel):
+    lora_path: str = Field(..., description="Path to LoRA adapter directory or LoKr/LyCORIS safetensors file")
+    adapter_name: Optional[str] = Field(default=None)
+
+class _SetLoRAScaleRequest(BaseModel):
+    adapter_name: Optional[str] = Field(default=None)
+    scale: float = Field(..., ge=0.0, le=1.0)
+
+class _ToggleLoRARequest(BaseModel):
+    use_lora: bool = Field(...)
+
+
+def _noop_start_tensorboard(app, logdir):
+    return None
+
+def _noop_stop_tensorboard(app):
+    pass
+
+@contextmanager
+def _noop_temporary_llm_model(app, handler, model_path):
+    yield
+
+def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _append_jsonl(path: str, data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+
+def _register_extended_endpoints(app, dit_handler, llm_handler):
+    """Register training and LoRA management endpoints on the Gradio FastAPI app."""
+
+    # Alias required by training modules
+    app.state.handler = dit_handler
+
+    # Import and register training routes
+    from acestep.api.train_api_service import (
+        initialize_training_state,
+        register_training_api_routes,
+    )
+
+    initialize_training_state(app)
+
+    register_training_api_routes(
+        app=app,
+        verify_api_key=verify_api_key,
+        wrap_response=_wrap_response,
+        start_tensorboard=_noop_start_tensorboard,
+        stop_tensorboard=_noop_stop_tensorboard,
+        temporary_llm_model=_noop_temporary_llm_model,
+        atomic_write_json=_atomic_write_json,
+        append_jsonl=_append_jsonl,
+    )
+
+    # Dataset file upload endpoint
+    @app.post("/v1/dataset/upload")
+    async def upload_dataset_files(
+        files: List[UploadFile] = File(...),
+        dataset_name: str = Form(default="uploaded_dataset"),
+        _: None = Depends(verify_api_key),
+    ):
+        AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.wma', '.opus'}
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+        upload_dir = os.path.join(_root, "datasets", "uploads", dataset_name)
+        os.makedirs(upload_dir, exist_ok=True)
+        saved, skipped = [], []
+        for f in files:
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in AUDIO_EXTENSIONS:
+                skipped.append(f.filename)
+                continue
+            content = await f.read()
+            with open(os.path.join(upload_dir, f.filename), "wb") as out:
+                out.write(content)
+            saved.append(f.filename)
+        return _wrap_response({"upload_dir": upload_dir, "saved_files": saved, "skipped_files": skipped, "count": len(saved)})
+
+    # LoRA management endpoints (inline, matching api_server.py behaviour)
+
+    @app.post("/v1/lora/load")
+    async def load_lora_endpoint(request: _LoadLoRARequest, _: None = Depends(verify_api_key)):
+        handler = app.state.handler
+        if handler is None or handler.model is None:
+            raise HTTPException(status_code=500, detail="Model not initialized")
+        try:
+            adapter_name = request.adapter_name.strip() if isinstance(request.adapter_name, str) else None
+            if adapter_name:
+                result = handler.add_lora(request.lora_path, adapter_name=adapter_name)
+            else:
+                result = handler.load_lora(request.lora_path)
+            if result.startswith("\u2705"):
+                resp = {"message": result, "lora_path": request.lora_path}
+                if adapter_name:
+                    resp["adapter_name"] = adapter_name
+                return _wrap_response(resp)
+            else:
+                raise HTTPException(status_code=400, detail=result)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load LoRA: {e}")
+
+    @app.post("/v1/lora/unload")
+    async def unload_lora_endpoint(_: None = Depends(verify_api_key)):
+        handler = app.state.handler
+        if handler is None or handler.model is None:
+            raise HTTPException(status_code=500, detail="Model not initialized")
+        try:
+            result = handler.unload_lora()
+            if result.startswith("\u2705") or result.startswith("\u26a0\ufe0f"):
+                return _wrap_response({"message": result})
+            else:
+                raise HTTPException(status_code=400, detail=result)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to unload LoRA: {e}")
+
+    @app.post("/v1/lora/toggle")
+    async def toggle_lora_endpoint(request: _ToggleLoRARequest, _: None = Depends(verify_api_key)):
+        handler = app.state.handler
+        if handler is None or handler.model is None:
+            raise HTTPException(status_code=500, detail="Model not initialized")
+        try:
+            result = handler.set_use_lora(request.use_lora)
+            if result.startswith("\u2705"):
+                return _wrap_response({"message": result, "use_lora": request.use_lora})
+            else:
+                return _wrap_response(None, code=400, error=result)
+        except Exception as e:
+            return _wrap_response(None, code=500, error=f"Failed to toggle LoRA: {e}")
+
+    @app.post("/v1/lora/scale")
+    async def set_lora_scale_endpoint(request: _SetLoRAScaleRequest, _: None = Depends(verify_api_key)):
+        handler = app.state.handler
+        if handler is None or handler.model is None:
+            raise HTTPException(status_code=500, detail="Model not initialized")
+        try:
+            adapter_name = request.adapter_name.strip() if isinstance(request.adapter_name, str) else None
+            if adapter_name:
+                result = handler.set_lora_scale(adapter_name, request.scale)
+            else:
+                result = handler.set_lora_scale(request.scale)
+            if result.startswith("\u2705") or result.startswith("\u26a0\ufe0f"):
+                resp = {"message": result, "scale": request.scale}
+                if adapter_name:
+                    resp["adapter_name"] = adapter_name
+                return _wrap_response(resp)
+            else:
+                return _wrap_response(None, code=400, error=result)
+        except Exception as e:
+            return _wrap_response(None, code=500, error=f"Failed to set LoRA scale: {e}")
+
+    @app.get("/v1/lora/status")
+    async def get_lora_status_endpoint(_: None = Depends(verify_api_key)):
+        handler = app.state.handler
+        if handler is None or handler.model is None:
+            raise HTTPException(status_code=500, detail="Model not initialized")
+        status = handler.get_lora_status()
+        return _wrap_response({
+            "lora_loaded": bool(status.get("loaded", getattr(handler, "lora_loaded", False))),
+            "use_lora": bool(status.get("active", getattr(handler, "use_lora", False))),
+            "lora_scale": float(status.get("scale", getattr(handler, "lora_scale", 1.0))),
+            "adapter_type": getattr(handler, "_adapter_type", None),
+            "scales": status.get("scales", {}),
+            "active_adapter": status.get("active_adapter"),
+            "adapters": status.get("adapters", []),
+            "synthetic_default_mode": bool(status.get("synthetic_default_mode", False)),
+        })
 
