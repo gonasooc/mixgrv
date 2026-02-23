@@ -108,6 +108,7 @@ class PreprocessDatasetRequest(BaseModel):
 
     output_dir: str = Field(..., description="Output directory for preprocessed tensors")
     skip_existing: bool = Field(default=False, description="Skip tensors that already exist (by sample id filename)")
+    dataset_path: Optional[str] = Field(default=None, description="Path to dataset JSON; auto-loads if in-memory builder is empty")
 
 
 def _serialize_samples(builder: Any) -> list[Dict[str, Any]]:
@@ -665,7 +666,6 @@ def register_training_dataset_routes(
                 builder.preprocess_to_tensors,
                 dit_handler=handler,
                 output_dir=request.output_dir.strip(),
-                skip_existing=request.skip_existing,
                 progress_callback=None,
             )
 
@@ -694,27 +694,29 @@ def register_training_dataset_routes(
     async def preprocess_dataset_async(request: PreprocessDatasetRequest, _: None = Depends(verify_api_key)):
         """Start preprocessing task asynchronously and return task_id immediately."""
 
-        builder = app.state.dataset_builder
-        if builder is None:
-            raise HTTPException(status_code=400, detail="No dataset loaded")
+        from acestep.training.dataset_builder import DatasetBuilder
+
+        builder = getattr(app.state, "dataset_builder", None)
+
+        # Auto-load from saved JSON if in-memory builder is missing or empty
+        if (builder is None or not builder.samples) and request.dataset_path:
+            path = request.dataset_path.strip()
+            if path and os.path.isfile(path):
+                builder = DatasetBuilder()
+                samples, _status = builder.load_dataset(path)
+                if samples:
+                    app.state.dataset_builder = builder
+                    app.state.dataset_json_path = path
+
+        if builder is None or not builder.samples:
+            raise HTTPException(status_code=400, detail="No dataset loaded. Please scan or load a dataset first.")
 
         handler: AceStepHandler = app.state.handler
         if handler is None or handler.model is None:
             raise HTTPException(status_code=500, detail="Model not initialized")
 
         task_id = str(uuid4())
-
-        labeled_samples = [sample for sample in builder.samples if sample.labeled]
-        total = len(labeled_samples)
-
-        if total == 0:
-            return wrap_response(
-                {
-                    "task_id": task_id,
-                    "message": "No labeled samples to preprocess",
-                    "total": 0,
-                }
-            )
+        total = len(builder.samples)
 
         with train_api_models._preprocess_lock:
             train_api_models._preprocess_tasks[task_id] = train_api_models.PreprocessTask(
@@ -749,7 +751,6 @@ def register_training_dataset_routes(
                 output_paths, status = builder.preprocess_to_tensors(
                     dit_handler=handler,
                     output_dir=request.output_dir.strip(),
-                    skip_existing=request.skip_existing,
                     progress_callback=progress_callback,
                 )
 

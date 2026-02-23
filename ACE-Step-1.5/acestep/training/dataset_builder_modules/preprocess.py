@@ -81,9 +81,7 @@ class PreprocessMixin:
         if not self.samples:
             return [], "❌ No samples to preprocess"
 
-        labeled_samples = [s for s in self.samples if s.labeled]
-        if not labeled_samples:
-            return [], "❌ No labeled samples to preprocess"
+        labeled_samples = list(self.samples)
 
         if dit_handler is None or dit_handler.model is None:
             return [], "❌ Model not initialized. Please initialize the service first."

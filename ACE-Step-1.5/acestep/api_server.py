@@ -3123,6 +3123,107 @@ def create_app() -> FastAPI:
             "synthetic_default_mode": bool(status.get("synthetic_default_mode", False)),
         })
 
+    @app.get("/v1/lora/list")
+    async def list_lora_adapters(
+        base_dir: str = "./lora_output",
+        _: None = Depends(verify_api_key),
+    ):
+        """Scan base_dir for LoRA/LoKr adapter directories."""
+        base_dir = os.path.abspath(base_dir)
+        adapters = []
+
+        if os.path.isdir(base_dir):
+            for root, _dirs, files in os.walk(base_dir):
+                has_config = "adapter_config.json" in files
+                safetensors = [f for f in files if f.endswith(".safetensors")]
+                if not has_config and not safetensors:
+                    continue
+
+                rel = os.path.relpath(root, base_dir)
+                label = rel.replace(os.sep, "/")
+
+                # Read adapter metadata from config if available
+                adapter_type = None
+                rank = None
+                alpha = None
+                if has_config:
+                    try:
+                        with open(os.path.join(root, "adapter_config.json")) as f:
+                            cfg = json.load(f)
+                        adapter_type = cfg.get("peft_type") or cfg.get("adapter_type")
+                        rank = cfg.get("r") or cfg.get("rank")
+                        alpha = cfg.get("lora_alpha") or cfg.get("alpha")
+                    except Exception:
+                        pass
+
+                # Total size of .safetensors files
+                file_size = sum(
+                    os.path.getsize(os.path.join(root, f)) for f in safetensors
+                )
+
+                adapters.append({
+                    "path": root,
+                    "label": label,
+                    "adapter_type": adapter_type,
+                    "rank": rank,
+                    "alpha": alpha,
+                    "file_size": file_size,
+                })
+
+        # Sort: 'final' adapters first, then alphabetically
+        adapters.sort(key=lambda a: (0 if "final" in a["label"] else 1, a["label"]))
+
+        return _wrap_response({"adapters": adapters, "base_dir": base_dir})
+
+    @app.post("/v1/lora/delete")
+    async def delete_lora_adapter(
+        request: Request,
+        _: None = Depends(verify_api_key),
+    ):
+        """Delete a LoRA adapter directory from disk."""
+        import shutil
+
+        body = await request.json()
+        adapter_path = body.get("adapter_path", "").strip()
+        if not adapter_path:
+            return _wrap_response(None, code=400, error="adapter_path is required")
+
+        adapter_path = os.path.abspath(adapter_path)
+
+        # Safety: only allow deletion inside a lora_output directory
+        if "lora_output" not in adapter_path:
+            return _wrap_response(None, code=400, error="Can only delete adapters inside lora_output directories")
+
+        if not os.path.isdir(adapter_path):
+            return _wrap_response(None, code=404, error=f"Directory not found: {adapter_path}")
+
+        # Verify it's actually an adapter directory
+        has_config = os.path.exists(os.path.join(adapter_path, "adapter_config.json"))
+        has_safetensors = any(f.endswith(".safetensors") for f in os.listdir(adapter_path))
+        if not has_config and not has_safetensors:
+            return _wrap_response(None, code=400, error="Not a valid adapter directory")
+
+        # Also remove the parent checkpoint dir (e.g. epoch_50/) if it only
+        # contains this adapter subdir + training_state.pt and nothing else
+        # meaningful.  We walk up at most 1 level.
+        parent = os.path.dirname(adapter_path)
+        remove_target = adapter_path
+
+        parent_basename = os.path.basename(parent)
+        if parent_basename.startswith("epoch_") or parent_basename == "final":
+            siblings = os.listdir(parent)
+            # If the parent only has the adapter dir (+ training_state / README),
+            # remove the whole parent.
+            non_adapter = [s for s in siblings if s != os.path.basename(adapter_path)]
+            if all(s in ("training_state.pt", "README.md", ".DS_Store") for s in non_adapter):
+                remove_target = parent
+
+        shutil.rmtree(remove_target)
+        return _wrap_response({
+            "deleted": remove_target,
+            "message": f"Deleted: {remove_target}",
+        })
+
     @app.post("/v1/reinitialize")
     async def reinitialize_service(_: None = Depends(verify_api_key)):
         """Reinitialize components that were unloaded during training/preprocessing."""

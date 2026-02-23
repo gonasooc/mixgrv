@@ -199,6 +199,9 @@ input[type="range"] {
 .btn-danger { background: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: #c0392b; }
 .btn-small { padding: 6px 12px; font-size: 0.8em; }
+.btn-icon { width: 34px; height: 34px; padding: 0; font-size: 1.1em; justify-content: center; background: var(--input-bg); border: 1px solid var(--border); color: var(--text-dim); }
+.btn-icon:hover:not(:disabled) { color: var(--text-bright); border-color: var(--text-dim); background: var(--accent-light); }
+.btn-icon.icon-danger:hover:not(:disabled) { color: #ff6b6b; border-color: #e74c3c; background: rgba(231,76,60,0.15); }
 .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
 /* Progress */
@@ -647,6 +650,16 @@ input[type="range"] {
       <h3>LoRA 설정</h3>
       <div class="card-desc">학습된 LoRA 어댑터를 로드하여 음악 생성 스타일을 변경합니다.</div>
       <div class="lora-section">
+        <div class="inline-row" style="margin-bottom:8px">
+          <div style="flex:1">
+            <label>어댑터 선택</label>
+            <select id="loraSelect" onchange="onLoraSelectChange()" style="width:100%">
+              <option value="">-- 직접 입력 --</option>
+            </select>
+          </div>
+          <button class="btn btn-icon" onclick="refreshLoraList()" title="새로고침" style="margin-top:auto">&#x21bb;</button>
+          <button class="btn btn-icon icon-danger" onclick="deleteSelectedLora()" title="선택 어댑터 삭제" style="margin-top:auto">&#x1f5d1;</button>
+        </div>
         <div class="inline-row">
           <div>
             <label>LoRA 경로</label>
@@ -830,6 +843,8 @@ const API = {
   toggleLora:        (p) => POST('/v1/lora/toggle', p),
   setLoraScale:      (p) => POST('/v1/lora/scale', p),
   loraStatus:        ()  => GET('/v1/lora/status'),
+  listLoras:         (baseDir) => GET('/v1/lora/list' + (baseDir ? '?base_dir=' + encodeURIComponent(baseDir) : '')),
+  deleteLora:        (p) => POST('/v1/lora/delete', p),
   // Music generation
   releaseTask:       (p) => POST('/release_task', p),
   queryResult:       (p) => POST('/query_result', p),
@@ -931,11 +946,12 @@ async function checkConnection() {
     State.connected = true;
     $('#statusDot').classList.add('connected');
     toast('서버에 연결되었습니다', 'success');
-    // Also try to fetch LoRA status
+    // Also try to fetch LoRA status & adapter list
     try {
       const lr = await API.loraStatus();
       _updateLoraStatusUI(lr.data || lr);
     } catch {}
+    refreshLoraList();
   } catch (e) {
     State.connected = false;
     $('#statusDot').classList.remove('connected');
@@ -1071,12 +1087,14 @@ async function uploadAndScan() {
 async function saveDataset() {
   if (!State.scanData) return toast('먼저 파일을 업로드하고 스캔하세요', 'error');
   try {
+    const datasetName = $('#datasetName').value.trim();
+    const audioDir = State.uploadedDir || '';
+    const savePath = audioDir ? `${audioDir}/${datasetName}.json` : `./datasets/${datasetName}.json`;
     const resp = await API.saveDataset({
-      dataset_name: $('#datasetName').value.trim(),
-      audio_dir: State.uploadedDir || '',
+      save_path: savePath,
+      dataset_name: datasetName,
       custom_tag: $('#customTag').value.trim(),
-      is_instrumental: $('#isInstrumental').checked,
-      samples: State.scanData.samples || [],
+      all_instrumental: $('#isInstrumental').checked,
     });
     toast('데이터셋이 저장되었습니다', 'success');
   } catch (e) {
@@ -1097,12 +1115,20 @@ async function startPreprocess() {
   State.preprocessStartTime = Date.now();
 
   try {
+    const datasetName = $('#datasetName').value.trim();
+    const audioDir = State.uploadedDir || '';
+    const datasetPath = audioDir ? `${audioDir}/${datasetName}.json` : '';
     const resp = await API.preprocessAsync({
-      dataset_name: $('#datasetName').value.trim(),
-      audio_dir: State.uploadedDir || '',
       output_dir: outDir,
+      dataset_path: datasetPath,
     });
     const data = resp.data || resp;
+    if (data.total === 0) {
+      $('#btnPreprocess').disabled = false;
+      $('#preprocessProgress').classList.add('hidden');
+      toast('전처리할 샘플이 없습니다. 먼저 데이터셋을 스캔하세요.', 'error');
+      return;
+    }
     State.preprocessTaskId = data.task_id;
     toast('전처리가 시작되었습니다', 'info');
     _pollPreprocess();
@@ -1263,6 +1289,7 @@ function _pollTraining() {
           $('#trainBar').style.width = '100%';
           $('#trainPercent').textContent = '100% 완료';
           toast('트레이닝이 완료되었습니다!', 'success');
+          refreshLoraList();
         }
       }
     } catch (e) {
@@ -1423,6 +1450,56 @@ function _updateLoraStatusUI(data) {
       `활성: ${active ? '예' : '아니오'} | 강도: ${parseFloat(scale).toFixed(2)} | 어댑터: ${adapter}`;
   } else {
     $('#loraStatusText').textContent = 'LoRA: 로드되지 않음';
+  }
+}
+
+// -- LoRA Adapter Dropdown --
+async function refreshLoraList() {
+  try {
+    const resp = await API.listLoras();
+    const data = resp.data || resp;
+    const sel = $('#loraSelect');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">-- 직접 입력 --</option>';
+    (data.adapters || []).forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.path;
+      const sizeMB = a.file_size ? (a.file_size / 1048576).toFixed(1) + 'MB' : '';
+      const meta = [a.adapter_type, a.rank ? 'r=' + a.rank : '', sizeMB].filter(Boolean).join(', ');
+      opt.textContent = a.label + (meta ? ` (${meta})` : '');
+      sel.appendChild(opt);
+    });
+    // Restore previous selection if still present
+    if (curVal && [...sel.options].some(o => o.value === curVal)) {
+      sel.value = curVal;
+    }
+  } catch (e) {
+    console.warn('LoRA list fetch failed:', e);
+  }
+}
+
+function onLoraSelectChange() {
+  const val = $('#loraSelect').value;
+  if (val) {
+    $('#loraPath').value = val;
+    _saveInputs();
+  }
+}
+
+async function deleteSelectedLora() {
+  const sel = $('#loraSelect');
+  const path = sel.value;
+  if (!path) return toast('삭제할 어댑터를 드롭다운에서 선택하세요', 'error');
+  const label = sel.options[sel.selectedIndex].textContent;
+  if (!confirm(`정말 삭제하시겠습니까?\n\n${label}\n${path}`)) return;
+  try {
+    const resp = await API.deleteLora({ adapter_path: path });
+    const data = resp.data || resp;
+    toast(data.message || '어댑터가 삭제되었습니다', 'success');
+    if ($('#loraPath').value === path) $('#loraPath').value = '';
+    await refreshLoraList();
+  } catch (e) {
+    toast(`삭제 실패: ${e.message}`, 'error');
   }
 }
 

@@ -119,9 +119,19 @@ uv run acestep --backend mlx --enable-api
 
 프로젝트 루트(`mixgrv`)로 이동 후:
 
+### 방법 A: 파일 직접 열기
+
 ```bash
 open index.html
 ```
+
+### 방법 B: 로컬 서버로 실행 (권장)
+
+```bash
+python3 -m http.server 5500
+```
+
+이후 브라우저에서 `http://localhost:5500` 접속. `file://` 프로토콜 대비 CORS 이슈를 피할 수 있어 API 호출이 포함된 이 프로젝트에서는 이 방식이 더 안정적입니다.
 
 화면 상단 서버 입력값은 기본적으로 `http://127.0.0.1:7860`이며, `연결` 버튼으로 상태를 확인합니다.
 
